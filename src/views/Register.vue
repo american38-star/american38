@@ -56,7 +56,8 @@ import {
   browserLocalPersistence,
 } from "firebase/auth";
 
-import { db } from "../firebase";
+// 🔥🔥🔥 إصلاح المسار الصحيح لـ firebase.js
+import { db } from "../../firebase.js";
 
 import {
   doc,
@@ -69,7 +70,7 @@ import {
   getDoc,
 } from "firebase/firestore";
 
-import router from "../router";
+import router from "../../router";
 
 export default {
   name: "RegisterPage",
@@ -174,12 +175,10 @@ export default {
           email: this.email.trim(),
           referralCode: user.uid.substring(0, 6),
 
-          // مستويات الإحالة
           invitedBy: inviterUID || null, // المستوى الأول
           level2: level2 || null,
           level3: level3 || null,
 
-          // بيانات الحساب
           balance: 0,
           vipLevel: 0,
           blocked: false,
