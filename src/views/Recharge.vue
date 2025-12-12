@@ -119,12 +119,11 @@ export default {
   },
 
   methods: {
+    /***
+     * إصلاح مشكلة QR — الآن يعمل دائماً على Vercel بدون require
+     */
     getQr(net) {
-      try {
-        return require(`@/assets/qr/${net}.png`);
-      } catch {
-        return `/src/assets/qr/${net}.png`;
-      }
+      return `/qr/${net}.png`;
     },
 
     getAddress(net) {
