@@ -265,7 +265,8 @@ import {
   onSnapshot,
   query,
   orderBy,
-  where
+  where,
+  limit
 } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -478,18 +479,31 @@ export default {
       }
     },
 
-    // 🔥 جديد: البحث عن معاملة في transactions
-    async findTransaction(userId, type, amount, createdAt) {
+    // 🔥 جديد: البحث عن معاملة في transactions بالبريد والمبلغ
+    async findTransactionByEmailAndAmount(email, amount, type) {
       try {
-        const q = query(
+        // البحث بالبريد أولاً (أكثر دقة)
+        let q = query(
           collection(db, "transactions"),
-          where("userId", "==", userId),
+          where("email", "==", email),
           where("type", "==", type),
           where("amount", "==", amount),
-          orderBy("createdAt", "desc"),
-          limit(1)
+          orderBy("createdAt", "desc")
         );
-        const snap = await getDocs(q);
+        
+        let snap = await getDocs(q);
+        
+        // إذا لم نجد بالبريد، نبحث بالـ amount فقط (للحالات القديمة)
+        if (snap.empty) {
+          q = query(
+            collection(db, "transactions"),
+            where("type", "==", type),
+            where("amount", "==", amount),
+            orderBy("createdAt", "desc")
+          );
+          snap = await getDocs(q);
+        }
+        
         if (!snap.empty) {
           return snap.docs[0];
         }
@@ -500,27 +514,37 @@ export default {
     },
 
     // 🔥 جديد: تحديث المعاملة في transactions
-    async updateTransactionStatus(userId, type, amount, status, reason = "", adminMessage = "") {
+    async updateTransactionStatus(email, type, amount, status, reason = "", adminMessage = "") {
       try {
-        // البحث عن المعاملة الأحدث للمستخدم
-        const q = query(
-          collection(db, "transactions"),
-          where("userId", "==", userId),
-          where("type", "==", type),
-          where("amount", "==", amount),
-          orderBy("createdAt", "desc")
-        );
-        const snap = await getDocs(q);
+        // 1. البحث عن المعاملة
+        const transactionDoc = await this.findTransactionByEmailAndAmount(email, amount, type);
         
-        if (!snap.empty) {
-          const transactionDoc = snap.docs[0];
+        if (transactionDoc) {
+          // 2. تحديث المعاملة
           await updateDoc(doc(db, "transactions", transactionDoc.id), {
             status: status,
             ...(reason && { reason: reason }),
             ...(adminMessage && { adminMessage: adminMessage }),
             updatedAt: serverTimestamp()
           });
+          console.log(`✅ تم تحديث المعاملة ${transactionDoc.id} إلى ${status}`);
           return transactionDoc.id;
+        } else {
+          console.warn(`⚠️ لم يتم العثور على معاملة للمستخدم ${email} بمبلغ ${amount} ونوع ${type}`);
+          // 3. إذا لم نجدها، ننشئ معاملة جديدة (للمعاملات القديمة)
+          await addDoc(collection(db, "transactions"), {
+            userId: this.rejectModalData.userId || "",
+            email: email,
+            type: type,
+            amount: amount,
+            status: status,
+            reason: reason,
+            adminMessage: adminMessage,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+          console.log(`✅ تم إنشاء معاملة جديدة للمستخدم ${email}`);
+          return "new";
         }
       } catch (error) {
         console.error("Error updating transaction:", error);
@@ -686,7 +710,7 @@ export default {
       try {
         // 1. 🔥 تحديث المعاملة في transactions
         await this.updateTransactionStatus(
-          req.userId,
+          req.email,
           "withdraw",
           req.amount,
           "approved",
@@ -742,7 +766,7 @@ export default {
       try {
         // 1. 🔥 تحديث المعاملة في transactions مع سبب الرفض
         await this.updateTransactionStatus(
-          req.userId,
+          req.email,
           "withdraw",
           req.amount,
           "rejected",
@@ -1002,7 +1026,7 @@ export default {
 
         // 🔥 تحديث المعاملة في transactions
         await this.updateTransactionStatus(
-          r.userId,
+          r.userEmail,
           "recharge",
           r.amount,
           "approved",
@@ -1069,7 +1093,7 @@ export default {
 
         // 🔥 تحديث المعاملة في transactions مع سبب الرفض
         await this.updateTransactionStatus(
-          r.userId,
+          r.userEmail,
           "recharge",
           r.amount,
           "rejected",
