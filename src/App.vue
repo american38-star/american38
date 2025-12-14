@@ -32,6 +32,30 @@
     <!-- ⭐ شريط التنقل بدون وميض ⭐ -->
     <BottomNav v-if="authLoaded && showBottomNav" />
 
+    <!-- إعلان Popup -->
+    <div id="companyAd" class="ad-overlay" v-if="showAd">
+      <div class="ad-box">
+        <h2>إعلان</h2>
+
+        <div class="ad-content">
+          <p>
+            🎉🎉🎉 مرحبا بالجميع! تأسست Mall of the world في سنغافورة في 20 أغسطس 2021 ومقرها حاليًا في منطقة الأعمال المركزية في سنغافورة. نحن شركة استثمار في التجارة الإلكترونية مع فريق تقني قوي وقوة مالية قوية.
+            <br>
+            يتعاون Mall of the world مع عشرات شركات التجارة الإلكترونية مثل Amazon و eBay و Tiktok و Aliexpress و Alibaba و Shopee، إلخ. لمساعدة التجار على زيادة مبيعات المنتجات الخاصة بهم، ويمكننا أيضًا تحقيق أرباح منه.
+            <br><br>
+            👍1: الحد الأدنى لمبلغ إعادة الشحن: 12 USDT، الحد الأدنى للسحب النقدي: 3 USDT
+            <br>
+            💰2: تستثمر المنصة على مستوى العالم.
+            <br>
+            🌈3: وقت إعادة تعيين المهمة هو الساعة 12 ظهراً.
+            <br>
+            🕯4: يمكنك سحب النقد مرة واحدة فقط في اليوم.
+          </p>
+        </div>
+
+        <button @click="closeAd">أنا أعرف</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -49,6 +73,8 @@ export default {
 
       showLangMenu: false,
       currentLang: "AR", // الافتراضي
+
+      showAd: false,  // حالة الإعلان
 
       languages: [
         { name: "Polski", code: "PL" },
@@ -79,6 +105,11 @@ export default {
     onAuthStateChanged(auth, (u) => {
       this.user = u;
       this.authLoaded = true;
+      
+      // إظهار الإعلان بعد تسجيل الدخول
+      if (this.user) {
+        this.showAd = true;
+      }
     });
   },
 
@@ -102,6 +133,10 @@ export default {
       this.currentLang = lang.code;
       localStorage.setItem("app_language", lang.code);
       this.showLangMenu = false;
+    },
+
+    closeAd() {
+      this.showAd = false; // إغلاق الإعلان
     }
   }
 };
@@ -172,5 +207,52 @@ body {
 .support-btn {
   left: 15px;
   text-decoration: none;
+}
+
+/* إعلان Popup */
+.ad-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.ad-box {
+  background: #eaf2ff;
+  width: 90%;
+  max-width: 400px;
+  margin: 15% auto;
+  border-radius: 15px;
+  padding: 15px;
+  text-align: center;
+}
+
+.ad-box h2 {
+  background: #3b82f6;
+  color: white;
+  padding: 10px;
+  border-radius: 10px;
+}
+
+.ad-content {
+  max-height: 250px;
+  overflow-y: auto;
+  margin: 10px 0;
+  font-size: 14px;
+}
+
+.ad-box button {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
 }
 </style>
