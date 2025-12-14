@@ -9,16 +9,18 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('token') || '')
 
   // -------------------------------
-  // قراءة بيانات المستخدم بدون أخطاء JSON.parse
+  // قراءة بيانات المستخدم بشكل آمن
   // -------------------------------
-  let savedUser = null
-  try {
-    savedUser = JSON.parse(localStorage.getItem('user'))
-  } catch (e) {
-    savedUser = null
-  }
+  const user = ref(null)
 
-  const user = ref(savedUser)
+  try {
+    const savedUser = localStorage.getItem('user')
+    if (savedUser) {
+      user.value = JSON.parse(savedUser)
+    }
+  } catch (e) {
+    console.error("خطأ في قراءة بيانات المستخدم:", e)
+  }
 
   // -------------------------------
   // اللغة
