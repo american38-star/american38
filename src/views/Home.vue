@@ -347,6 +347,7 @@ export default {
   overflow-y: auto;
   margin: 10px 0;
   font-size: 14px;
+  color: black; /* لون النص باللون الأسود */
 }
 
 .ad-box button {
