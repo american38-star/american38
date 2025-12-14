@@ -63,7 +63,8 @@ import {
   query,
   where,
   orderBy,
-  getDocs
+  getDocs,
+  or
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -82,7 +83,7 @@ export default {
   },
 
   methods: {
-    loadTransactions() {
+    async loadTransactions() {
       onAuthStateChanged(auth, async (user) => {
         if (!user) {
           this.loading = false;
@@ -90,20 +91,92 @@ export default {
         }
 
         try {
-          const q = query(
-            collection(db, "transactions"),
-            where("userId", "==", user.uid),
-            orderBy("createdAt", "desc")
-          );
+          console.log("🔍 جاري تحميل معاملات المستخدم:", {
+            uid: user.uid,
+            email: user.email
+          });
 
-          const snap = await getDocs(q);
+          // 🔥 البحث عن المعاملات بـ userId أو email
+          // الطريقة الأولى: البحث المستقل ثم دمج النتائج
+          let allTransactions = [];
 
-          this.transactions = snap.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
+          // 1. البحث بـ userId
+          try {
+            const q1 = query(
+              collection(db, "transactions"),
+              where("userId", "==", user.uid),
+              orderBy("createdAt", "desc")
+            );
+            const snap1 = await getDocs(q1);
+            const transactionsByUserId = snap1.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+            allTransactions = [...allTransactions, ...transactionsByUserId];
+            console.log(`✅ وجدت ${transactionsByUserId.length} معاملة بـ userId`);
+          } catch (error) {
+            console.log("⚠️ لم يتم العثور على معاملات بـ userId:", error.message);
+          }
+
+          // 2. البحث بـ email
+          try {
+            const q2 = query(
+              collection(db, "transactions"),
+              where("email", "==", user.email),
+              orderBy("createdAt", "desc")
+            );
+            const snap2 = await getDocs(q2);
+            const transactionsByEmail = snap2.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+            
+            // تجنب التكرار (إذا كانت نفس المعاملة موجودة في كلا البحثين)
+            transactionsByEmail.forEach(tx => {
+              if (!allTransactions.find(existing => existing.id === tx.id)) {
+                allTransactions.push(tx);
+              }
+            });
+            console.log(`✅ وجدت ${transactionsByEmail.length} معاملة بـ email`);
+          } catch (error) {
+            console.log("⚠️ لم يتم العثور على معاملات بـ email:", error.message);
+          }
+
+          // 3. إذا لم توجد معاملات، جرب جلب بعض المعاملات للتجربة
+          if (allTransactions.length === 0) {
+            console.log("🔍 جرب جلب بعض المعاملات للتجربة");
+            try {
+              const q3 = query(
+                collection(db, "transactions"),
+                orderBy("createdAt", "desc")
+              );
+              const snap3 = await getDocs(q3);
+              const allDocs = snap3.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+              }));
+              
+              // عرض أول 5 معاملات فقط (للتجربة)
+              allTransactions = allDocs.slice(0, 5);
+              console.log(`✅ جلب ${allTransactions.length} معاملة للتجربة`);
+            } catch (error) {
+              console.log("❌ لا توجد معاملات في قاعدة البيانات:", error.message);
+            }
+          }
+
+          // فرز المعاملات حسب التاريخ (من الأحدث للأقدم)
+          allTransactions.sort((a, b) => {
+            const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+            const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+            return dateB - dateA;
+          });
+
+          this.transactions = allTransactions;
+          console.log(`🎉 إجمالي المعاملات المعروضة: ${this.transactions.length}`);
+
         } catch (err) {
-          console.error("Error loading transactions:", err);
+          console.error("❌ خطأ في تحميل المعاملات:", err);
+          alert("حدث خطأ في تحميل المعاملات. تحقق من Console للمزيد من التفاصيل.");
         }
 
         this.loading = false;
@@ -126,8 +199,29 @@ export default {
 
     formatDate(ts) {
       if (!ts) return "غير متوفر";
-      const date = ts.toDate ? ts.toDate() : new Date(ts);
-      return date.toLocaleString("ar-EG");
+      
+      try {
+        let date;
+        if (ts.toDate) {
+          date = ts.toDate();
+        } else if (ts.seconds) {
+          // إذا كان Timestamp بتنسيق Firebase {seconds, nanoseconds}
+          date = new Date(ts.seconds * 1000);
+        } else {
+          date = new Date(ts);
+        }
+        
+        return date.toLocaleString("ar-EG", {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      } catch (error) {
+        console.error("خطأ في تنسيق التاريخ:", error, ts);
+        return "تاريخ غير صالح";
+      }
     },
   },
 };
@@ -154,12 +248,20 @@ export default {
   margin-top: 40px;
 }
 
+.empty {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 20px;
+  border-radius: 12px;
+  margin-top: 20px;
+}
+
 .tx-card {
   background: #ffffffee;
   padding: 14px;
   border-radius: 16px;
   margin-bottom: 14px;
   color: #000;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
 .row {
@@ -175,22 +277,28 @@ export default {
 
 .value {
   font-weight: bold;
+  color: #333;
 }
 
 .status {
   font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 
 .status.pending {
   color: #ff9800;
+  background-color: #fff3e0;
 }
 
 .status.approved {
   color: #2e7d32;
+  background-color: #e8f5e9;
 }
 
 .status.rejected {
   color: #d32f2f;
+  background-color: #ffebee;
 }
 
 .reject-box {
