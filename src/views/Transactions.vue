@@ -97,12 +97,12 @@ export default {
 
           let allTransactions = [];
 
-          // البحث باستخدام userId فقط (تجنب استخدام email)
+          // البحث باستخدام userId فقط
           try {
             const q1 = query(
               collection(db, "transactions"),
               where("userId", "==", user.uid), // نستخدم userId فقط
-              orderBy("createdAt", "desc")
+              orderBy("createdAt", "desc") // تأكد من أن التاريخ مرتب بشكل صحيح
             );
             const snap1 = await getDocs(q1);
             const transactionsByUserId = snap1.docs.map(doc => ({
@@ -128,7 +128,7 @@ export default {
                 id: doc.id,
                 ...doc.data()
               }));
-              
+
               // عرض أول 5 معاملات فقط للتجربة
               allTransactions = allDocs.slice(0, 5);
               console.log(`✅ جلب ${allTransactions.length} معاملة للتجربة`);
@@ -172,7 +172,7 @@ export default {
 
     formatDate(ts) {
       if (!ts) return "غير متوفر";
-      
+
       try {
         let date;
         if (ts.toDate) {
@@ -182,7 +182,7 @@ export default {
         } else {
           date = new Date(ts);
         }
-        
+
         return date.toLocaleString("ar-EG", {
           year: 'numeric',
           month: 'long',
