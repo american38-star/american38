@@ -167,9 +167,16 @@ export default {
         return;
       }
 
+      if (!this.txid || this.txid.trim() === "") {
+        this.message = "أدخل معرف التحويل (TxID).";
+        this.messageType = "error";
+        return;
+      }
+
       this.loading = true;
 
       try {
+        // 1. حفظ في payments (كما كان)
         await addDoc(collection(db, "payments"), {
           userId: this.userId,
           email: this.userEmail,
@@ -177,6 +184,20 @@ export default {
           txid: this.txid,
           network: this.network,
           status: "pending",
+          createdAt: serverTimestamp(),
+        });
+
+        // 2. ✅ أضفت هذا: حفظ في transactions لكي تظهر في صفحة المعاملات
+        await addDoc(collection(db, "transactions"), {
+          userId: this.userId,
+          email: this.userEmail,
+          type: "recharge",
+          amount: this.amount,
+          network: this.network,
+          txid: this.txid,
+          status: "pending",
+          reason: "",
+          adminMessage: "",
           createdAt: serverTimestamp(),
         });
 
