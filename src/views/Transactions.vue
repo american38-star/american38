@@ -110,9 +110,9 @@ export default {
               ...doc.data()
             }));
             allTransactions = [...allTransactions, ...transactionsByUserId];
-            console.log(`✅ وجدت ${transactionsByUserId.length} معاملة بـ userId`);
+            console.log(`✅ وجدت ${transactionsByUserId.length} معاملة لـ userId`);
           } catch (error) {
-            console.log("⚠️ لم يتم العثور على معاملات بـ userId:", error.message);
+            console.log("⚠️ لم يتم العثور على معاملات لـ userId:", error.message);
           }
 
           // إذا لم توجد معاملات، جلب بعض المعاملات للتجربة
