@@ -107,7 +107,8 @@ export default {
             const snap1 = await getDocs(q1);
             const transactionsByUserId = snap1.docs.map(doc => ({
               id: doc.id,
-              ...doc.data()
+              ...doc.data(),
+              createdAt: doc.data().createdAt
             }));
             allTransactions = [...allTransactions, ...transactionsByUserId];
             console.log(`✅ وجدت ${transactionsByUserId.length} معاملة بـ userId`);
@@ -115,26 +116,38 @@ export default {
             console.log("⚠️ لم يتم العثور على معاملات بـ userId:", error.message);
           }
 
-          // إذا لم توجد معاملات، جلب بعض المعاملات للتجربة
+          // البحث باستخدام email (إذا كان موجوداً في البيانات)
+          try {
+            const q2 = query(
+              collection(db, "transactions"),
+              where("email", "==", user.email),
+              orderBy("createdAt", "desc")
+            );
+            const snap2 = await getDocs(q2);
+            const transactionsByEmail = snap2.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data(),
+              createdAt: doc.data().createdAt
+            }));
+            
+            // دمج النتائج مع تجنب التكرار
+            transactionsByEmail.forEach(tx => {
+              if (!allTransactions.some(existing => existing.id === tx.id)) {
+                allTransactions.push(tx);
+              }
+            });
+            
+            console.log(`✅ وجدت ${transactionsByEmail.length} معاملة بالبريد الإلكتروني`);
+          } catch (error) {
+            console.log("⚠️ لا توجد معاملات بالبريد الإلكتروني:", error.message);
+          }
+
+          // إذا لم توجد معاملات للمستخدم
           if (allTransactions.length === 0) {
-            console.log("🔍 جرب جلب بعض المعاملات للتجربة");
-            try {
-              const q3 = query(
-                collection(db, "transactions"),
-                orderBy("createdAt", "desc")
-              );
-              const snap3 = await getDocs(q3);
-              const allDocs = snap3.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-              }));
-              
-              // عرض أول 5 معاملات فقط للتجربة
-              allTransactions = allDocs.slice(0, 5);
-              console.log(`✅ جلب ${allTransactions.length} معاملة للتجربة`);
-            } catch (error) {
-              console.log("❌ لا توجد معاملات في قاعدة البيانات:", error.message);
-            }
+            console.log("📭 لا توجد معاملات لهذا المستخدم بعد");
+            this.transactions = [];
+            this.loading = false;
+            return;
           }
 
           // فرز المعاملات حسب التاريخ (من الأحدث للأقدم)
