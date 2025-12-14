@@ -39,6 +39,17 @@
         </div>
         <p>{{ item.title }}</p>
       </div>
+
+      <!-- زر الشركة لعرض الإعلان عند الضغط عليه -->
+      <div
+        class="item"
+        @click="showCompanyAd"
+      >
+        <div class="icon-box">
+          <i class="fas fa-building"></i>
+        </div>
+        <p>الشركة</p>
+      </div>
     </div>
 
     <!-- البانر -->
@@ -133,6 +144,7 @@ export default {
         { title: "سحب", icon: "fas fa-wallet", route: "/withdraw" },
         { title: "المعاملات", icon: "fas fa-history", route: "/transactions" },
         { title: "برنامج", icon: "fas fa-download", route: "/program" },
+        { title: "الشركة", icon: "fas fa-building", route: "/company" },
         { title: "الأصدقاء", icon: "fas fa-users", route: "/team" },
         { title: "الوكالات", icon: "fas fa-id-card", route: "/agency" }
       ]
