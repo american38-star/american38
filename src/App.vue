@@ -30,7 +30,12 @@
     <a class="circle-btn instagram-btn"
        href="https://www.instagram.com/mall_oftheworld?igsh=OXR1emp3N2k2d2Yz"
        target="_blank">
-      📸
+      <!-- أيقونة انستغرام -->
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M7.8 2H16.2C19.4 2 22 4.6 22 7.8V16.2C22 19.4 19.4 22 16.2 22H7.8C4.6 22 2 19.4 2 16.2V7.8C2 4.6 4.6 2 7.8 2Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M12 15.5C13.933 15.5 15.5 13.933 15.5 12C15.5 10.067 13.933 8.5 12 8.5C10.067 8.5 8.5 10.067 8.5 12C8.5 13.933 10.067 15.5 12 15.5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M17.5 6.5H17.51" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
     </a>
 
     <!-- الصفحات -->
@@ -225,6 +230,12 @@ body {
 .instagram-btn {
   left: 75px; /* تحت زر الدعم مباشرة */
   top: 90px;
+}
+
+.instagram-btn svg {
+  fill: none;
+  stroke: #E1306C; /* اللون الوردي المشهور لانستغرام */
+  stroke-width: 1.5;
 }
 
 .support-btn {
