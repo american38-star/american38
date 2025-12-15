@@ -2,10 +2,10 @@
   <div class="transactions-wrapper">
     <h2 class="title">المعاملات</h2>
 
-    <!-- إشعار للمستخدم -->
+    <!-- ✅ رسالة تأكيد للموافقة -->
     <div v-if="successMessage" class="success-notification">
-      ✅ {{ successMessage }}
-      <button @click="successMessage = ''" class="close-notification">✕</button>
+      🎉 {{ successMessage }}
+      <button @click="successMessage = ''" class="close-btn">✕</button>
     </div>
 
     <div v-if="loading" class="loading">جاري التحميل...</div>
@@ -39,9 +39,9 @@
           :key="tx.id"
           class="tx-card"
         >
-          <!-- ✅ هنا أضفت رمز الموافقة عند حالة "approved" -->
-          <div v-if="tx.status === 'approved'" class="approved-badge">
-            ✅ تمت الموافقة على طلبك
+          <!-- ✅ تأكيد الموافقة -->
+          <div v-if="tx.status === 'approved'" class="approved-banner">
+            ✅ تمت الموافقة على طلبك بنجاح
           </div>
 
           <div class="row">
@@ -66,11 +66,15 @@
             <span class="value">{{ formatDate(tx.createdAt) }}</span>
           </div>
 
-          <!-- ✅ رسالة تأكيد للموافقة -->
+          <div v-if="tx.userId" class="row">
+            <span class="label">User ID</span>
+            <span class="value uid">{{ tx.userId.substring(0, 10) }}...</span>
+          </div>
+
+          <!-- ✅ رسالة خاصة للموافقة -->
           <div v-if="tx.status === 'approved' && tx.adminMessage" class="approved-message">
-            <strong>🎉 تمت الموافقة!</strong>
-            <div>{{ tx.adminMessage }}</div>
-            <small>تم إضافة المبلغ إلى رصيدك</small>
+            <strong>تمت الموافقة على طلبك</strong>
+            <p>{{ tx.adminMessage }}</p>
           </div>
 
           <div
@@ -101,9 +105,9 @@ import {
   query,
   where,
   orderBy,
-  getDocs,
-  doc,
-  getDoc
+  onSnapshot, // ⬅️ بدلاً من getDocs
+  addDoc,
+  serverTimestamp
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -117,18 +121,26 @@ export default {
       indexError: false,
       currentUserId: "",
       useIndex: true,
-      successMessage: "" // رسالة نجاح
+      showTestButton: false,
+      successMessage: "",
+      unsubscribe: null // للتتبع
     };
   },
 
   created() {
     this.loadTransactions();
-    this.checkForApprovedTransactions();
+  },
+
+  beforeUnmount() {
+    // تنظيف الاشتراك عند الخروج
+    if (this.unsubscribe) {
+      this.unsubscribe();
+    }
   },
 
   methods: {
-    async loadTransactions() {
-      onAuthStateChanged(auth, async (user) => {
+    loadTransactions() {
+      onAuthStateChanged(auth, (user) => {
         if (!user) {
           this.loading = false;
           console.log("❌ لا يوجد مستخدم مسجل دخول");
@@ -138,99 +150,72 @@ export default {
         this.currentUserId = user.uid;
         console.log("🔍 جاري تحميل معاملات المستخدم:", user.uid);
 
+        // تنظيف الاشتراك السابق
+        if (this.unsubscribe) {
+          this.unsubscribe();
+        }
+
         try {
-          // المحاولة الأولى: مع الفهرس (إذا كان موجوداً)
-          if (this.useIndex) {
-            try {
-              const q = query(
-                collection(db, "transactions"),
-                where("userId", "==", user.uid),
-                orderBy("createdAt", "desc")
-              );
-              
-              const snapshot = await getDocs(q);
-              this.transactions = snapshot.docs.map(doc => ({
+          // استخدام onSnapshot للتحديث الفوري
+          const q = query(
+            collection(db, "transactions"),
+            where("userId", "==", user.uid),
+            orderBy("createdAt", "desc")
+          );
+
+          this.unsubscribe = onSnapshot(q, 
+            (snapshot) => {
+              console.log("🔄 تحديث تلقائي للمعاملات");
+
+              const transactionsData = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
               }));
-              
-              console.log(`✅ تم تحميل ${this.transactions.length} معاملة باستخدام الفهرس`);
+
+              // ✅ اكتشاف المعاملات التي تحولت إلى "approved"
+              this.detectNewApprovals(transactionsData);
+
+              this.transactions = transactionsData;
               this.loading = false;
-              return;
+              this.indexError = false;
               
-            } catch (indexError) {
-              console.log("⚠️ خطأ في الفهرس:", indexError.message);
-              this.indexError = true;
-              this.useIndex = false;
-              // استمر للطريقة البديلة
+              console.log(`✅ تم تحديث ${transactionsData.length} معاملة`);
+            },
+            (error) => {
+              console.error("❌ خطأ في الاستماع:", error);
+              
+              if (error.code === 'failed-precondition') {
+                this.indexError = true;
+                this.useIndex = false;
+              }
+              
+              this.loading = false;
             }
-          }
+          );
 
-          // الطريقة البديلة: بدون orderBy (لا تحتاج فهرس)
-          try {
-            const q = query(
-              collection(db, "transactions"),
-              where("userId", "==", user.uid)
-            );
-            
-            const snapshot = await getDocs(q);
-            let transactions = snapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            }));
-            
-            // ترتيب يدوي حسب التاريخ
-            transactions.sort((a, b) => {
-              const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
-              const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-              return dateB - dateA;
-            });
-            
-            this.transactions = transactions;
-            console.log(`✅ تم تحميل ${transactions.length} معاملة بدون فهرس`);
-            
-          } catch (error) {
-            console.error("❌ خطأ في الطريقة البديلة:", error);
-            this.transactions = [];
-          }
-          
         } catch (err) {
-          console.error("❌ خطأ عام في تحميل المعاملات:", err);
-          this.transactions = [];
+          console.error("❌ خطأ في تحميل المعاملات:", err);
+          this.loading = false;
         }
-
-        this.loading = false;
       });
     },
 
-    // ✅ التحقق إذا كانت هناك معاملات تمت الموافقة عليها حديثاً
-    async checkForApprovedTransactions() {
-      const user = auth.currentUser;
-      if (!user) return;
+    // ✅ اكتشاف المعاملات التي تمت الموافقة عليها حديثاً
+    detectNewApprovals(newTransactions) {
+      if (this.transactions.length === 0) return;
 
-      try {
-        const q = query(
-          collection(db, "transactions"),
-          where("userId", "==", user.uid),
-          where("status", "==", "approved"),
-          orderBy("createdAt", "desc")
-        );
+      newTransactions.forEach(newTx => {
+        const oldTx = this.transactions.find(t => t.id === newTx.id);
         
-        const snapshot = await getDocs(q);
-        const approvedCount = snapshot.size;
-        
-        if (approvedCount > 0) {
-          const latest = snapshot.docs[0].data();
-          this.successMessage = `✅ تمت الموافقة على طلبك! المبلغ: ${latest.amount} USDT`;
+        if (oldTx && oldTx.status === 'pending' && newTx.status === 'approved') {
+          this.successMessage = `✅ تمت الموافقة على طلبك! المبلغ: ${newTx.amount} USDT`;
           
           // تختفي الرسالة بعد 10 ثواني
           setTimeout(() => {
             this.successMessage = "";
           }, 10000);
         }
-      } catch (error) {
-        console.log("⚠️ لا يمكن التحقق من المعاملات الموافق عليها:", error.message);
-      }
+      });
     },
 
     // دالة للتحميل بدون فهرس
@@ -238,7 +223,41 @@ export default {
       this.loading = true;
       this.indexError = false;
       this.useIndex = false;
-      await this.loadTransactions();
+      
+      if (this.unsubscribe) {
+        this.unsubscribe();
+      }
+      
+      this.loadTransactions();
+    },
+
+    // دالة لإنشاء معاملة تجريبية (إخفاءها)
+    async createTestTransaction() {
+      try {
+        const user = auth.currentUser;
+        if (!user) {
+          alert("يجب تسجيل الدخول أولاً");
+          return;
+        }
+
+        const transactionData = {
+          userId: user.uid,
+          type: "deposit",
+          amount: Math.floor(Math.random() * 500) + 100,
+          status: "pending",
+          createdAt: serverTimestamp(),
+          reason: "",
+          adminMessage: ""
+        };
+
+        const docRef = await addDoc(collection(db, "transactions"), transactionData);
+        
+        alert(`تم إنشاء معاملة بنجاح!\nالمبلغ: ${transactionData.amount} USDT`);
+        
+      } catch (error) {
+        console.error("❌ خطأ في إنشاء المعاملة:", error);
+        alert("خطأ: " + error.message);
+      }
     },
 
     typeLabel(type) {
@@ -255,7 +274,7 @@ export default {
       const statuses = {
         pending: "قيد الانتظار",
         approved: "✅ موافق",
-        rejected: "مرفوض"
+        rejected: "❌ مرفوض"
       };
       return statuses[status] || status;
     },
@@ -310,25 +329,24 @@ export default {
   padding: 12px 20px;
   border-radius: 8px;
   margin-bottom: 20px;
-  border: 1px solid #c3e6cb;
+  border: 2px solid #28a745;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  animation: slideIn 0.5s ease;
+  animation: slideDown 0.5s ease;
 }
 
-.close-notification {
+@keyframes slideDown {
+  from { transform: translateY(-20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.close-btn {
   background: none;
   border: none;
   color: #155724;
   font-size: 18px;
   cursor: pointer;
-  padding: 0 5px;
-}
-
-@keyframes slideIn {
-  from { transform: translateY(-20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
 }
 
 .loading {
@@ -408,24 +426,25 @@ export default {
   color: #000;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
   position: relative;
+  border: 1px solid #ddd;
 }
 
-.approved-badge {
-  background: #d4edda;
-  color: #155724;
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-weight: bold;
-  margin-bottom: 10px;
+.approved-banner {
+  background: linear-gradient(90deg, #28a745, #20c997);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 8px 8px 0 0;
+  margin: -14px -14px 10px -14px;
   text-align: center;
-  border: 2px solid #28a745;
+  font-weight: bold;
+  font-size: 14px;
 }
 
 .approved-message {
   background: #e8f5e9;
   padding: 12px;
-  border-radius: 10px;
-  margin-top: 12px;
+  border-radius: 8px;
+  margin-top: 10px;
   color: #2e7d32;
   border-right: 4px solid #4CAF50;
 }
@@ -433,14 +452,6 @@ export default {
 .approved-message strong {
   display: block;
   margin-bottom: 5px;
-  font-size: 14px;
-}
-
-.approved-message small {
-  display: block;
-  margin-top: 5px;
-  font-size: 11px;
-  opacity: 0.8;
 }
 
 .row {
@@ -459,26 +470,35 @@ export default {
   color: #333;
 }
 
+.value.uid {
+  font-size: 11px;
+  color: #888;
+  direction: ltr;
+}
+
 .status {
   font-weight: bold;
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
 }
 
 .status.pending {
   color: #ff9800;
   background-color: #fff3e0;
+  border: 1px solid #ff9800;
 }
 
 .status.approved {
-  color: #2e7d32;
-  background-color: #e8f5e9;
-  border: 1px solid #4CAF50;
+  color: #155724;
+  background-color: #d4edda;
+  border: 2px solid #28a745;
 }
 
 .status.rejected {
-  color: #d32f2f;
-  background-color: #ffebee;
+  color: #721c24;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
 }
 
 .reject-box {
