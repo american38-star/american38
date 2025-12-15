@@ -36,6 +36,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 
+// تحديث العناوين بناءً على الشبكات المختلفة
 const addresses = {
   erc20: "0x8574dE94D5DF925e8C9Db6282527Fd1539F9eD85",
   trc20: "TN8rsodYN8HNnBum853uENLrDDXL6BDMHk",
@@ -43,22 +44,26 @@ const addresses = {
   sol: "Hwnc8ypNMFkpEH7JP1GXgHUaYAS5fPgUhPyrtmip2zim"
 }
 
+// المتغيرات المتعلقة بالشبكة والعنوان
 const network = ref('erc20')
 const address = ref(addresses.erc20)
 const qrUrl = ref('')
 
+// دالة تحديث العنوان بناءً على الشبكة المحددة
 function updateAddress(){
   address.value = addresses[network.value]
-  // use qrserver to generate qr for address
+  // استخدام qrserver لتوليد رمز الاستجابة السريعة QR
   qrUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(address.value)}`
 }
 
+// دالة نسخ العنوان
 function copyAddress(){
   navigator.clipboard.writeText(address.value).then(()=>{
     alert('تم نسخ العنوان')
   })
 }
 
+// تنفيذ دالة التحديث عند تحميل الصفحة
 onMounted(()=>{ updateAddress() })
 </script>
 
