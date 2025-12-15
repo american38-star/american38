@@ -9,18 +9,21 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('token') || '')
 
   // -------------------------------
-  // قراءة بيانات المستخدم بشكل آمن
+  // قراءة بيانات المستخدم بدون أخطاء JSON.parse
   // -------------------------------
-  const user = ref(null)
-
+  let savedUser = null
   try {
-    const savedUser = localStorage.getItem('user')
-    if (savedUser) {
-      user.value = JSON.parse(savedUser)
-    }
+    savedUser = JSON.parse(localStorage.getItem('user'))
   } catch (e) {
-    console.error("خطأ في قراءة بيانات المستخدم:", e)
+    savedUser = null
   }
+
+  const user = ref(savedUser)
+
+  // -------------------------------
+  // إضافة userId (الـ UID الخاص بالمستخدم)
+  // -------------------------------
+  const userId = ref(user.value?.uid || '')
 
   // -------------------------------
   // اللغة
@@ -34,6 +37,7 @@ export const useAuthStore = defineStore('auth', () => {
   function setAuth(t, u) {
     token.value = t
     user.value = u
+    userId.value = u?.uid || ''
     localStorage.setItem('token', t)
     localStorage.setItem('user', JSON.stringify(u))
   }
@@ -44,6 +48,7 @@ export const useAuthStore = defineStore('auth', () => {
   function logout() {
     token.value = ''
     user.value = null
+    userId.value = ''
     localStorage.removeItem('token')
     localStorage.removeItem('user')
   }
@@ -60,6 +65,7 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     token,
     user,
+    userId,  // إضافة userId
     lang,
     setAuth,
     logout,
