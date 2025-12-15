@@ -21,9 +21,16 @@
 
     <!-- زر الدعم -->
     <a class="circle-btn support-btn"
-       href="https://t.me/American_38X"
+       href="https://t.me/mall_oftheworld"
        target="_blank">
       🎧
+    </a>
+
+    <!-- زر انستغرام -->
+    <a class="circle-btn instagram-btn"
+       href="https://www.instagram.com/mall_oftheworld?igsh=OXR1emp3N2k2d2Yz"
+       target="_blank">
+      📸
     </a>
 
     <!-- الصفحات -->
@@ -201,6 +208,7 @@ body {
   z-index: 9999;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
   flex-direction: column;
+  text-decoration: none;
 }
 
 .lang-code {
@@ -211,6 +219,16 @@ body {
 
 .lang-btn {
   right: 15px;
+}
+
+/* زر انستغرام */
+.instagram-btn {
+  left: 75px; /* تحت زر الدعم مباشرة */
+  top: 90px;
+}
+
+.support-btn {
+  left: 15px;
 }
 
 /* القائمة */
@@ -240,11 +258,6 @@ body {
 
 .lang-item:hover {
   background: #f5faff;
-}
-
-.support-btn {
-  left: 15px;
-  text-decoration: none;
 }
 
 /* إعلان Popup */
