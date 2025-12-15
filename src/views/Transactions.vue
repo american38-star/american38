@@ -3,7 +3,7 @@
     <h2 class="title">المعاملات</h2>
 
     <div v-if="loading" class="loading">جاري التحميل...</div>
-    
+
     <div v-else-if="indexError" class="error-box">
       <h3>⚠️ تحتاج إلى إنشاء فهرس في Firebase</h3>
       <p>لإصلاح المشكلة الدائمة:</p>
@@ -12,23 +12,78 @@
         <li>اختر مشروعك: <strong>american-54cbd</strong></li>
         <li>اذهب لـ Firestore Database → Indexes</li>
         <li>أنشئ فهرس لـ collection "transactions" مع الحقول: userId (Ascending), createdAt (Descending)</li>
+        <li>انتظر دقيقتين ثم أعد تحميل هذه الصفحة</li>
       </ol>
-      <button @click="loadWithoutOrder" class="retry-btn">
-        👇 استعراض المعاملات بدون ترتيب (مؤقت)
+      <button @click="loadTransactionsWithoutIndex" class="retry-btn">
+        🔄 محاولة التحميل بدون فهرس (مؤقت)
       </button>
     </div>
 
     <div v-else>
       <div v-if="transactions.length === 0" class="empty">
-        لا توجد معاملات
+        <p>لا توجد معاملات</p>
+        <p class="uid-info">UID الحالي: {{ currentUserId }}</p>
+        <button @click="createTestTransaction" class="test-btn">
+          ➕ إنشاء معاملة تجريبية
+        </button>
       </div>
 
-      <div
-        v-for="tx in transactions"
-        :key="tx.id"
-        class="tx-card"
-      >
-        <!-- نفس كود العرض السابق -->
+      <div v-else>
+        <p class="count-info">عدد المعاملات: {{ transactions.length }}</p>
+        
+        <div
+          v-for="tx in transactions"
+          :key="tx.id"
+          class="tx-card"
+        >
+          <div class="row">
+            <span class="label">المعرف</span>
+            <span class="value">{{ tx.id.substring(0, 8) }}...</span>
+          </div>
+
+          <div class="row">
+            <span class="label">النوع</span>
+            <span class="value">{{ typeLabel(tx.type) }}</span>
+          </div>
+
+          <div class="row">
+            <span class="label">المبلغ</span>
+            <span class="value">{{ tx.amount }} USDT</span>
+          </div>
+
+          <div class="row">
+            <span class="label">الحالة</span>
+            <span :class="['status', tx.status]">
+              {{ statusLabel(tx.status) }}
+            </span>
+          </div>
+
+          <div class="row">
+            <span class="label">التاريخ</span>
+            <span class="value">{{ formatDate(tx.createdAt) }}</span>
+          </div>
+
+          <div v-if="tx.userId" class="row">
+            <span class="label">User ID</span>
+            <span class="value uid">{{ tx.userId.substring(0, 10) }}...</span>
+          </div>
+
+          <div
+            v-if="tx.status === 'rejected' && tx.reason"
+            class="reject-box"
+          >
+            <strong>سبب الرفض:</strong>
+            <div>{{ tx.reason }}</div>
+          </div>
+
+          <div
+            v-if="tx.adminMessage"
+            class="admin-box"
+          >
+            <strong>رسالة الإدارة:</strong>
+            <div>{{ tx.adminMessage }}</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -41,7 +96,9 @@ import {
   query,
   where,
   orderBy,
-  getDocs
+  getDocs,
+  addDoc,
+  serverTimestamp
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -53,7 +110,8 @@ export default {
       loading: true,
       transactions: [],
       indexError: false,
-      currentUserId: ""
+      currentUserId: "",
+      useIndex: true // محاولة استخدام الفهرس أولاً
     };
   },
 
@@ -66,84 +124,192 @@ export default {
       onAuthStateChanged(auth, async (user) => {
         if (!user) {
           this.loading = false;
+          console.log("❌ لا يوجد مستخدم مسجل دخول");
           return;
         }
 
         this.currentUserId = user.uid;
-        
+        console.log("🔍 جاري تحميل معاملات المستخدم:", user.uid);
+
         try {
-          // المحاولة الأولى: مع orderBy (المفترضة)
-          const q = query(
-            collection(db, "transactions"),
-            where("userId", "==", user.uid),
-            orderBy("createdAt", "desc") // ← هذا يحتاج فهرس
-          );
-          
-          const snapshot = await getDocs(q);
-          this.transactions = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          
-          this.loading = false;
-          
-        } catch (error) {
-          console.error("❌ خطأ في تحميل المعاملات:", error);
-          
-          // إذا كان الخطأ بسبب الفهرس
-          if (error.code === 'failed-precondition' || 
-              error.message.includes('index')) {
-            this.indexError = true;
+          // المحاولة الأولى: مع الفهرس (إذا كان موجوداً)
+          if (this.useIndex) {
+            try {
+              const q = query(
+                collection(db, "transactions"),
+                where("userId", "==", user.uid),
+                orderBy("createdAt", "desc")
+              );
+              
+              const snapshot = await getDocs(q);
+              this.transactions = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+              }));
+              
+              console.log(`✅ تم تحميل ${this.transactions.length} معاملة باستخدام الفهرس`);
+              this.loading = false;
+              return;
+              
+            } catch (indexError) {
+              console.log("⚠️ خطأ في الفهرس، جرب الطريقة البديلة:", indexError.message);
+              this.indexError = true;
+              this.useIndex = false;
+              // استمر للطريقة البديلة
+            }
+          }
+
+          // الطريقة البديلة: بدون orderBy (لا تحتاج فهرس)
+          try {
+            const q = query(
+              collection(db, "transactions"),
+              where("userId", "==", user.uid)
+            );
+            
+            const snapshot = await getDocs(q);
+            let transactions = snapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+            
+            // ترتيب يدوي حسب التاريخ (بدون فهرس)
+            transactions.sort((a, b) => {
+              const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+              const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+              return dateB - dateA; // من الأحدث للأقدم
+            });
+            
+            this.transactions = transactions;
+            console.log(`✅ تم تحميل ${transactions.length} معاملة بدون فهرس`);
+            
+          } catch (error) {
+            console.error("❌ خطأ في الطريقة البديلة:", error);
+            this.transactions = [];
           }
           
-          this.loading = false;
+        } catch (err) {
+          console.error("❌ خطأ عام في تحميل المعاملات:", err);
+          this.transactions = [];
         }
+
+        this.loading = false;
       });
     },
 
-    // دالة بديلة بدون orderBy (تعمل بدون فهرس)
-    async loadWithoutOrder() {
+    // دالة للتحميل بدون فهرس (عند النقر على الزر)
+    async loadTransactionsWithoutIndex() {
       this.loading = true;
       this.indexError = false;
-      
+      this.useIndex = false;
+      await this.loadTransactions();
+    },
+
+    // دالة لإنشاء معاملة تجريبية
+    async createTestTransaction() {
       try {
         const user = auth.currentUser;
-        if (!user) return;
+        if (!user) {
+          alert("يجب تسجيل الدخول أولاً");
+          return;
+        }
+
+        const transactionData = {
+          userId: user.uid,
+          type: "deposit",
+          amount: Math.floor(Math.random() * 500) + 100, // مبلغ عشوائي 100-600
+          status: "pending",
+          createdAt: serverTimestamp(),
+          reason: "",
+          adminMessage: "تم إنشاؤها للاختبار"
+        };
+
+        console.log("📝 جاري إنشاء معاملة تجريبية:", transactionData);
+
+        const docRef = await addDoc(collection(db, "transactions"), transactionData);
         
-        const q = query(
-          collection(db, "transactions"),
-          where("userId", "==", user.uid)
-          // ⚠️ بدون orderBy - يعمل بدون فهرس
-        );
+        console.log("✅ تم إنشاء معاملة جديدة:", docRef.id);
+        alert(`تم إنشاء معاملة تجريبية بنجاح!\nالمبلغ: ${transactionData.amount} USDT`);
         
-        const snapshot = await getDocs(q);
-        let transactions = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        
-        // ترتيب يدوي في الكود (بدون فهرس)
-        transactions.sort((a, b) => {
-          const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
-          const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-          return dateB - dateA; // من الأحدث للأقدم
-        });
-        
-        this.transactions = transactions;
-        console.log(`✅ تم تحميل ${transactions.length} معاملة (بدون فهرس)`);
+        // إعادة تحميل القائمة
+        this.loading = true;
+        await this.loadTransactions();
         
       } catch (error) {
-        console.error("❌ خطأ في التحميل البديل:", error);
+        console.error("❌ خطأ في إنشاء المعاملة:", error);
         alert("خطأ: " + error.message);
       }
+    },
+
+    typeLabel(type) {
+      const types = {
+        recharge: "تعبئة رصيد",
+        withdraw: "سحب رصيد",
+        deposit: "إيداع",
+        vip: "VIP"
+      };
+      return types[type] || type;
+    },
+
+    statusLabel(status) {
+      const statuses = {
+        pending: "قيد الانتظار",
+        approved: "موافق",
+        rejected: "مرفوض"
+      };
+      return statuses[status] || status;
+    },
+
+    formatDate(ts) {
+      if (!ts) return "غير متوفر";
       
-      this.loading = false;
-    }
-  }
+      try {
+        let date;
+        if (ts.toDate) {
+          date = ts.toDate();
+        } else if (ts.seconds) {
+          date = new Date(ts.seconds * 1000);
+        } else {
+          date = new Date(ts);
+        }
+        
+        return date.toLocaleString("ar-EG", {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      } catch (error) {
+        console.error("خطأ في تنسيق التاريخ:", error, ts);
+        return "تاريخ غير صالح";
+      }
+    },
+  },
 };
 </script>
 
 <style scoped>
+.transactions-wrapper {
+  padding: 16px;
+  min-height: 100vh;
+  direction: rtl;
+  background: linear-gradient(#0d6efd, #6bb4ff);
+}
+
+.title {
+  text-align: center;
+  color: white;
+  margin-bottom: 16px;
+  font-size: 24px;
+}
+
+.loading {
+  text-align: center;
+  color: white;
+  margin-top: 40px;
+  font-size: 18px;
+}
+
 .error-box {
   background: #fff3cd;
   border: 1px solid #ffeaa7;
@@ -179,5 +345,114 @@ export default {
   background: #218838;
 }
 
-/* باقي الـ styles كما هي */
+.empty {
+  text-align: center;
+  color: white;
+  margin-top: 40px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 30px;
+  border-radius: 16px;
+}
+
+.uid-info {
+  font-size: 12px;
+  opacity: 0.8;
+  margin: 10px 0;
+  direction: ltr;
+  word-break: break-all;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 8px;
+  border-radius: 8px;
+}
+
+.test-btn {
+  background: #4CAF50;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-top: 15px;
+  font-size: 14px;
+}
+
+.test-btn:hover {
+  background: #45a049;
+}
+
+.count-info {
+  color: white;
+  text-align: center;
+  margin-bottom: 15px;
+  font-weight: bold;
+}
+
+.tx-card {
+  background: #ffffffee;
+  padding: 14px;
+  border-radius: 16px;
+  margin-bottom: 14px;
+  color: #000;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.label {
+  font-size: 13px;
+  color: #555;
+}
+
+.value {
+  font-weight: bold;
+  color: #333;
+}
+
+.value.uid {
+  font-size: 11px;
+  color: #888;
+  direction: ltr;
+}
+
+.status {
+  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.status.pending {
+  color: #ff9800;
+  background-color: #fff3e0;
+}
+
+.status.approved {
+  color: #2e7d32;
+  background-color: #e8f5e9;
+}
+
+.status.rejected {
+  color: #d32f2f;
+  background-color: #ffebee;
+}
+
+.reject-box {
+  background: #ffe5e5;
+  padding: 8px;
+  border-radius: 10px;
+  margin-top: 8px;
+  color: #b00020;
+  font-size: 13px;
+}
+
+.admin-box {
+  background: #e3f2fd;
+  padding: 8px;
+  border-radius: 10px;
+  margin-top: 8px;
+  font-size: 13px;
+}
 </style>
