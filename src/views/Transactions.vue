@@ -69,6 +69,16 @@
             <span class="value uid">{{ tx.userId.substring(0, 10) }}...</span>
           </div>
 
+          <!-- أزرار إدارة الحالة (للتجربة) -->
+          <div v-if="tx.status === 'pending'" class="admin-actions">
+            <button @click="approveTransaction(tx.id)" class="approve-btn">
+              ✅ الموافقة
+            </button>
+            <button @click="rejectTransaction(tx.id)" class="reject-btn">
+              ❌ الرفض
+            </button>
+          </div>
+
           <div
             v-if="tx.status === 'rejected' && tx.reason"
             class="reject-box"
@@ -99,6 +109,8 @@ import {
   orderBy,
   getDocs,
   addDoc,
+  updateDoc,
+  doc,
   serverTimestamp
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
@@ -238,6 +250,65 @@ export default {
         
       } catch (error) {
         console.error("❌ خطأ في إنشاء المعاملة:", error);
+        alert("خطأ: " + error.message);
+      }
+    },
+
+    // دالة للموافقة على المعاملة
+    async approveTransaction(transactionId) {
+      try {
+        if (!confirm("هل تريد الموافقة على هذه المعاملة؟")) {
+          return;
+        }
+
+        const transactionRef = doc(db, "transactions", transactionId);
+        await updateDoc(transactionRef, {
+          status: "approved",
+          adminMessage: "تمت الموافقة على الطلب"
+        });
+
+        console.log("✅ تمت الموافقة على المعاملة:", transactionId);
+        alert("تمت الموافقة على المعاملة بنجاح!");
+        
+        // إعادة تحميل القائمة
+        this.loading = true;
+        await this.loadTransactions();
+        
+      } catch (error) {
+        console.error("❌ خطأ في الموافقة على المعاملة:", error);
+        alert("خطأ: " + error.message);
+      }
+    },
+
+    // دالة لرفض المعاملة
+    async rejectTransaction(transactionId) {
+      try {
+        const reason = prompt("أدخل سبب الرفض:");
+        if (!reason || reason.trim() === "") {
+          alert("يجب إدخال سبب الرفض");
+          return;
+        }
+
+        if (!confirm("هل تريد رفض هذه المعاملة؟")) {
+          return;
+        }
+
+        const transactionRef = doc(db, "transactions", transactionId);
+        await updateDoc(transactionRef, {
+          status: "rejected",
+          reason: reason,
+          adminMessage: "تم رفض الطلب"
+        });
+
+        console.log("❌ تم رفض المعاملة:", transactionId);
+        alert("تم رفض المعاملة!");
+        
+        // إعادة تحميل القائمة
+        this.loading = true;
+        await this.loadTransactions();
+        
+      } catch (error) {
+        console.error("❌ خطأ في رفض المعاملة:", error);
         alert("خطأ: " + error.message);
       }
     },
@@ -439,6 +510,43 @@ export default {
 .status.rejected {
   color: #d32f2f;
   background-color: #ffebee;
+}
+
+.admin-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  justify-content: center;
+}
+
+.approve-btn {
+  background: #28a745;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  flex: 1;
+}
+
+.approve-btn:hover {
+  background: #218838;
+}
+
+.reject-btn {
+  background: #dc3545;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  flex: 1;
+}
+
+.reject-btn:hover {
+  background: #c82333;
 }
 
 .reject-box {
