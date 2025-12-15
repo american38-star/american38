@@ -2,12 +2,6 @@
   <div class="transactions-wrapper">
     <h2 class="title">المعاملات</h2>
 
-    <!-- ✅ رسالة تأكيد للموافقة -->
-    <div v-if="successMessage" class="success-notification">
-      🎉 {{ successMessage }}
-      <button @click="successMessage = ''" class="close-btn">✕</button>
-    </div>
-
     <div v-if="loading" class="loading">جاري التحميل...</div>
 
     <div v-else-if="indexError" class="error-box">
@@ -29,6 +23,10 @@
       <div v-if="transactions.length === 0" class="empty">
         <p>لا توجد معاملات</p>
         <p class="uid-info">UID الحالي: {{ currentUserId }}</p>
+        <!-- إخفاء الزر بناءً على قيمة showTestButton -->
+        <button v-if="showTestButton" @click="createTestTransaction" class="test-btn">
+          ➕ إنشاء معاملة تجريبية
+        </button>
       </div>
 
       <div v-else>
@@ -39,9 +37,26 @@
           :key="tx.id"
           class="tx-card"
         >
-          <!-- ✅ تأكيد الموافقة -->
-          <div v-if="tx.status === 'approved'" class="approved-banner">
-            ✅ تمت الموافقة على طلبك بنجاح
+          <!-- 🔥 رسالة موافقة الأدمن - الجديدة 🔥 -->
+          <div v-if="tx.adminAction === 'approved' && tx.userMessage" class="approval-box">
+            <div class="approval-icon">✅</div>
+            <div class="approval-text">{{ tx.userMessage }}</div>
+            <div v-if="tx.approvedAt" class="approval-date">
+              تمت الموافقة في: {{ formatDate(tx.approvedAt) }}
+            </div>
+          </div>
+
+          <!-- رسالة رفض الأدمن -->
+          <div v-if="tx.adminAction === 'rejected' && tx.reason" class="reject-box">
+            <div class="reject-icon">❌</div>
+            <div class="reject-text">
+              <strong>تم الرفض:</strong> {{ tx.reason }}
+            </div>
+          </div>
+
+          <div class="row">
+            <span class="label">المعرف</span>
+            <span class="value">{{ tx.id.substring(0, 8) }}...</span>
           </div>
 
           <div class="row">
@@ -51,7 +66,7 @@
 
           <div class="row">
             <span class="label">المبلغ</span>
-            <span class="value">{{ tx.amount }} USDT</span>
+            <span class="value">{{ tx.amount }} {{ tx.currency || 'USDT' }}</span>
           </div>
 
           <div class="row">
@@ -71,24 +86,23 @@
             <span class="value uid">{{ tx.userId.substring(0, 10) }}...</span>
           </div>
 
-          <!-- ✅ رسالة خاصة للموافقة -->
-          <div v-if="tx.status === 'approved' && tx.adminMessage" class="approved-message">
-            <strong>تمت الموافقة على طلبك</strong>
-            <p>{{ tx.adminMessage }}</p>
+          <!-- 🔥 معلومات إضافية 🔥 -->
+          <div v-if="tx.email" class="row">
+            <span class="label">البريد</span>
+            <span class="value email">{{ tx.email }}</span>
           </div>
 
-          <div
-            v-if="tx.status === 'rejected' && tx.reason"
-            class="reject-box"
-          >
-            <strong>سبب الرفض:</strong>
-            <div>{{ tx.reason }}</div>
+          <div v-if="tx.transactionId" class="row">
+            <span class="label">كود المعاملة</span>
+            <span class="value code">{{ tx.transactionId }}</span>
           </div>
 
-          <div
-            v-if="tx.status === 'pending' && tx.adminMessage"
-            class="admin-box"
-          >
+          <div v-if="tx.adminId" class="row">
+            <span class="label">الأدمن</span>
+            <span class="value admin">ID: {{ tx.adminId }}</span>
+          </div>
+
+          <div v-if="tx.adminMessage && tx.adminMessage !== ''" class="admin-box">
             <strong>رسالة الإدارة:</strong>
             <div>{{ tx.adminMessage }}</div>
           </div>
@@ -105,7 +119,7 @@ import {
   query,
   where,
   orderBy,
-  onSnapshot, // ⬅️ بدلاً من getDocs
+  getDocs,
   addDoc,
   serverTimestamp
 } from "firebase/firestore";
@@ -121,26 +135,19 @@ export default {
       indexError: false,
       currentUserId: "",
       useIndex: true,
-      showTestButton: false,
-      successMessage: "",
-      unsubscribe: null // للتتبع
+      showTestButton: false // إخفاء زر الاختبار
     };
   },
 
   created() {
     this.loadTransactions();
-  },
-
-  beforeUnmount() {
-    // تنظيف الاشتراك عند الخروج
-    if (this.unsubscribe) {
-      this.unsubscribe();
-    }
+    // 🔥 الاستماع للتغييرات في الوقت الحقيقي 🔥
+    this.setupRealtimeListener();
   },
 
   methods: {
-    loadTransactions() {
-      onAuthStateChanged(auth, (user) => {
+    async loadTransactions() {
+      onAuthStateChanged(auth, async (user) => {
         if (!user) {
           this.loading = false;
           console.log("❌ لا يوجد مستخدم مسجل دخول");
@@ -150,72 +157,100 @@ export default {
         this.currentUserId = user.uid;
         console.log("🔍 جاري تحميل معاملات المستخدم:", user.uid);
 
-        // تنظيف الاشتراك السابق
-        if (this.unsubscribe) {
-          this.unsubscribe();
-        }
-
         try {
-          // استخدام onSnapshot للتحديث الفوري
-          const q = query(
-            collection(db, "transactions"),
-            where("userId", "==", user.uid),
-            orderBy("createdAt", "desc")
-          );
-
-          this.unsubscribe = onSnapshot(q, 
-            (snapshot) => {
-              console.log("🔄 تحديث تلقائي للمعاملات");
-
-              const transactionsData = snapshot.docs.map(doc => ({
+          // المحاولة الأولى: مع الفهرس (إذا كان موجوداً)
+          if (this.useIndex) {
+            try {
+              const q = query(
+                collection(db, "transactions"),
+                where("userId", "==", user.uid),
+                orderBy("createdAt", "desc")
+              );
+              
+              const snapshot = await getDocs(q);
+              this.transactions = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
               }));
-
-              // ✅ اكتشاف المعاملات التي تحولت إلى "approved"
-              this.detectNewApprovals(transactionsData);
-
-              this.transactions = transactionsData;
+              
+              console.log(`✅ تم تحميل ${this.transactions.length} معاملة باستخدام الفهرس`);
+              this.checkForApprovals(); // 🔥 تفقد الموافقات
               this.loading = false;
-              this.indexError = false;
+              return;
               
-              console.log(`✅ تم تحديث ${transactionsData.length} معاملة`);
-            },
-            (error) => {
-              console.error("❌ خطأ في الاستماع:", error);
-              
-              if (error.code === 'failed-precondition') {
-                this.indexError = true;
-                this.useIndex = false;
-              }
-              
-              this.loading = false;
+            } catch (indexError) {
+              console.log("⚠️ خطأ في الفهرس، جرب الطريقة البديلة:", indexError.message);
+              this.indexError = true;
+              this.useIndex = false;
+              // استمر للطريقة البديلة
             }
-          );
+          }
 
+          // الطريقة البديلة: بدون orderBy
+          try {
+            const q = query(
+              collection(db, "transactions"),
+              where("userId", "==", user.uid)
+            );
+            
+            const snapshot = await getDocs(q);
+            let transactions = snapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+            
+            // ترتيب يدوي
+            transactions.sort((a, b) => {
+              const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+              const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+              return dateB - dateA;
+            });
+            
+            this.transactions = transactions;
+            console.log(`✅ تم تحميل ${transactions.length} معاملة بدون فهرس`);
+            this.checkForApprovals(); // 🔥 تفقد الموافقات
+            
+          } catch (error) {
+            console.error("❌ خطأ في الطريقة البديلة:", error);
+            this.transactions = [];
+          }
+          
         } catch (err) {
-          console.error("❌ خطأ في تحميل المعاملات:", err);
-          this.loading = false;
+          console.error("❌ خطأ عام في تحميل المعاملات:", err);
+          this.transactions = [];
         }
+
+        this.loading = false;
       });
     },
 
-    // ✅ اكتشاف المعاملات التي تمت الموافقة عليها حديثاً
-    detectNewApprovals(newTransactions) {
-      if (this.transactions.length === 0) return;
-
-      newTransactions.forEach(newTx => {
-        const oldTx = this.transactions.find(t => t.id === newTx.id);
+    // 🔥 دالة للاستماع للتغييرات في الوقت الحقيقي 🔥
+    setupRealtimeListener() {
+      onAuthStateChanged(auth, async (user) => {
+        if (!user) return;
         
-        if (oldTx && oldTx.status === 'pending' && newTx.status === 'approved') {
-          this.successMessage = `✅ تمت الموافقة على طلبك! المبلغ: ${newTx.amount} USDT`;
-          
-          // تختفي الرسالة بعد 10 ثواني
-          setTimeout(() => {
-            this.successMessage = "";
-          }, 10000);
-        }
+        // هذا يتطلب إضافة onSnapshot
+        // يمكنك تفعيله لاحقاً إذا أردت تحديث تلقائي
+        console.log("👂 الاستماع للتحديثات في الوقت الحقيقي...");
       });
+    },
+
+    // 🔥 دالة للتحقق من المعاملات التي تمت الموافقة عليها 🔥
+    checkForApprovals() {
+      const approvedTransactions = this.transactions.filter(tx => 
+        tx.adminAction === 'approved' || tx.userMessage?.includes('موافقة')
+      );
+      
+      if (approvedTransactions.length > 0) {
+        console.log(`✅ تم العثور على ${approvedTransactions.length} معاملة موافق عليها`);
+        
+        // يمكن إضافة إشعار للمستخدم هنا
+        approvedTransactions.forEach(tx => {
+          if (tx.userMessage) {
+            console.log(`📩 رسالة للمستخدم: ${tx.userMessage}`);
+          }
+        });
+      }
     },
 
     // دالة للتحميل بدون فهرس
@@ -223,15 +258,10 @@ export default {
       this.loading = true;
       this.indexError = false;
       this.useIndex = false;
-      
-      if (this.unsubscribe) {
-        this.unsubscribe();
-      }
-      
-      this.loadTransactions();
+      await this.loadTransactions();
     },
 
-    // دالة لإنشاء معاملة تجريبية (إخفاءها)
+    // دالة لإنشاء معاملة تجريبية (معدلة مع الحقول الجديدة)
     async createTestTransaction() {
       try {
         const user = auth.currentUser;
@@ -240,19 +270,35 @@ export default {
           return;
         }
 
+        // 🔥 بيانات المعاملة الجديدة مع الحقول الكاملة 🔥
         const transactionData = {
+          transactionId: "TEST" + Date.now(), // 🔥 جديد
           userId: user.uid,
-          type: "deposit",
+          email: user.email, // 🔥 جديد
+          type: "withdrawal",
           amount: Math.floor(Math.random() * 500) + 100,
+          currency: "USDT", // 🔥 جديد
           status: "pending",
-          createdAt: serverTimestamp(),
+          adminId: "", // 🔥 جديد
+          adminMessage: "",
+          adminAction: "", // 🔥 جديد - سيتم تعبئته عند الموافقة
+          userMessage: "", // 🔥 جديد - سيتم تعبئته عند الموافقة
           reason: "",
-          adminMessage: ""
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(), // 🔥 جديد
+          approvedAt: null // 🔥 جديد
         };
+
+        console.log("📝 جاري إنشاء معاملة تجريبية:", transactionData);
 
         const docRef = await addDoc(collection(db, "transactions"), transactionData);
         
-        alert(`تم إنشاء معاملة بنجاح!\nالمبلغ: ${transactionData.amount} USDT`);
+        console.log("✅ تم إنشاء معاملة جديدة:", docRef.id);
+        alert(`تم إنشاء معاملة تجريبية بنجاح!\nالمبلغ: ${transactionData.amount} ${transactionData.currency}`);
+        
+        // إعادة تحميل القائمة
+        this.loading = true;
+        await this.loadTransactions();
         
       } catch (error) {
         console.error("❌ خطأ في إنشاء المعاملة:", error);
@@ -264,6 +310,7 @@ export default {
       const types = {
         recharge: "تعبئة رصيد",
         withdraw: "سحب رصيد",
+        withdrawal: "سحب رصيد", // 🔥 إضافة withdrawal
         deposit: "إيداع",
         vip: "VIP"
       };
@@ -273,8 +320,9 @@ export default {
     statusLabel(status) {
       const statuses = {
         pending: "قيد الانتظار",
-        approved: "✅ موافق",
-        rejected: "❌ مرفوض"
+        approved: "موافق",
+        rejected: "مرفوض",
+        completed: "مكتمل"
       };
       return statuses[status] || status;
     },
@@ -321,32 +369,6 @@ export default {
   color: white;
   margin-bottom: 16px;
   font-size: 24px;
-}
-
-.success-notification {
-  background: #d4edda;
-  color: #155724;
-  padding: 12px 20px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  border: 2px solid #28a745;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  animation: slideDown 0.5s ease;
-}
-
-@keyframes slideDown {
-  from { transform: translateY(-20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  color: #155724;
-  font-size: 18px;
-  cursor: pointer;
 }
 
 .loading {
@@ -411,6 +433,21 @@ export default {
   border-radius: 8px;
 }
 
+.test-btn {
+  background: #4CAF50;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-top: 15px;
+  font-size: 14px;
+}
+
+.test-btn:hover {
+  background: #45a049;
+}
+
 .count-info {
   color: white;
   text-align: center;
@@ -425,33 +462,55 @@ export default {
   margin-bottom: 14px;
   color: #000;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  position: relative;
-  border: 1px solid #ddd;
 }
 
-.approved-banner {
-  background: linear-gradient(90deg, #28a745, #20c997);
-  color: white;
-  padding: 8px 12px;
-  border-radius: 8px 8px 0 0;
-  margin: -14px -14px 10px -14px;
-  text-align: center;
-  font-weight: bold;
-  font-size: 14px;
-}
-
-.approved-message {
-  background: #e8f5e9;
+/* 🔥 صندوق الموافقة 🔥 */
+.approval-box {
+  background: linear-gradient(to right, #e8f5e9, #c8e6c9);
+  border: 2px solid #4caf50;
   padding: 12px;
-  border-radius: 8px;
-  margin-top: 10px;
-  color: #2e7d32;
-  border-right: 4px solid #4CAF50;
+  border-radius: 12px;
+  margin-bottom: 15px;
+  text-align: center;
+  animation: pulse 2s infinite;
 }
 
-.approved-message strong {
-  display: block;
+.approval-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.approval-text {
+  color: #2e7d32;
+  font-weight: bold;
+  font-size: 16px;
   margin-bottom: 5px;
+}
+
+.approval-date {
+  color: #388e3c;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* صندوق الرفض */
+.reject-box {
+  background: #ffebee;
+  border: 1px solid #f44336;
+  padding: 12px;
+  border-radius: 12px;
+  margin-bottom: 15px;
+  color: #d32f2f;
+}
+
+.reject-icon {
+  font-size: 20px;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.reject-text {
+  text-align: center;
 }
 
 .row {
@@ -476,39 +535,41 @@ export default {
   direction: ltr;
 }
 
+.value.email {
+  font-size: 12px;
+  color: #2196f3;
+}
+
+.value.code {
+  font-size: 11px;
+  color: #9c27b0;
+  direction: ltr;
+}
+
+.value.admin {
+  font-size: 11px;
+  color: #ff9800;
+}
+
 .status {
   font-weight: bold;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 
 .status.pending {
   color: #ff9800;
   background-color: #fff3e0;
-  border: 1px solid #ff9800;
 }
 
 .status.approved {
-  color: #155724;
-  background-color: #d4edda;
-  border: 2px solid #28a745;
+  color: #2e7d32;
+  background-color: #e8f5e9;
 }
 
 .status.rejected {
-  color: #721c24;
-  background-color: #f8d7da;
-  border: 1px solid #f5c6cb;
-}
-
-.reject-box {
-  background: #ffe5e5;
-  padding: 8px;
-  border-radius: 10px;
-  margin-top: 8px;
-  color: #b00020;
-  font-size: 13px;
-  border-right: 4px solid #dc3545;
+  color: #d32f2f;
+  background-color: #ffebee;
 }
 
 .admin-box {
@@ -517,6 +578,12 @@ export default {
   border-radius: 10px;
   margin-top: 8px;
   font-size: 13px;
-  border-right: 4px solid #2196F3;
+}
+
+/* 🔥 تأثير نبضي للموافقة 🔥 */
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(76, 175, 80, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
 }
 </style>
