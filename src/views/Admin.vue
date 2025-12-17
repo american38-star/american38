@@ -479,93 +479,6 @@ export default {
       }
     },
 
-    // 🔥 🔴 **دالة مكسورة - استبدلها:**
-    async findTransactionByUserIdAndAmount(userId, amount, type) {
-      try {
-        // البحث بـ userId أولاً
-        let q = query(
-          collection(db, "transactions"),
-          where("userId", "==", userId),
-          where("type", "==", type),
-          where("amount", "==", amount),
-          orderBy("createdAt", "desc")
-        );
-        
-        let snap = await getDocs(q);
-        
-        // إذا لم نجد، نبحث بالـ amount فقط
-        if (snap.empty) {
-          q = query(
-            collection(db, "transactions"),
-            where("type", "==", type),
-            where("amount", "==", amount),
-            orderBy("createdAt", "desc")
-          );
-          snap = await getDocs(q);
-          
-          // تصفية حسب userId يدوياً
-          if (!snap.empty) {
-            for (const docSnap of snap.docs) {
-              const data = docSnap.data();
-              if (data.userId === userId) {
-                return docSnap;
-              }
-            }
-          }
-        }
-        
-        if (!snap.empty) {
-          return snap.docs[0];
-        }
-      } catch (error) {
-        console.error("Error finding transaction:", error);
-      }
-      return null;
-    },
-
-    // 🔥 🔴 **دالة مكسورة - استبدلها:**
-    async updateTransactionStatus(userId, amount, type, status, reason = "", adminMessage = "") {
-      try {
-        // 1. البحث عن المعاملة
-        const transactionDoc = await this.findTransactionByUserIdAndAmount(userId, amount, type);
-        
-        if (transactionDoc) {
-          // 2. تحديث المعاملة
-          await updateDoc(doc(db, "transactions", transactionDoc.id), {
-            status: status,
-            ...(reason && { reason: reason }),
-            ...(adminMessage && { adminMessage: adminMessage }),
-            updatedAt: serverTimestamp()
-          });
-          console.log(`✅ تم تحديث المعاملة ${transactionDoc.id} إلى ${status}`);
-          return transactionDoc.id;
-        } else {
-          console.warn(`⚠️ لم يتم العثور على معاملة للمستخدم ${userId} بمبلغ ${amount} ونوع ${type}`);
-          
-          // 3. إنشاء معاملة جديدة مباشرة (الحل السريع)
-          const userDoc = await getDoc(doc(db, "users", userId));
-          const userEmail = userDoc.exists() ? userDoc.data().email : "";
-          
-          await addDoc(collection(db, "transactions"), {
-            userId: userId,
-            email: userEmail,
-            type: type,
-            amount: amount,
-            status: status,
-            reason: reason,
-            adminMessage: adminMessage,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          });
-          console.log(`✅ تم إنشاء معاملة جديدة للمستخدم ${userId}`);
-          return "new";
-        }
-      } catch (error) {
-        console.error("Error updating transaction:", error);
-      }
-      return null;
-    },
-
     async logout() {
       try {
         const auth = getAuth();
@@ -716,7 +629,53 @@ export default {
       }
     },
     
-    // 🔥 🔴 **دالة approveWithdraw المكسورة - إصلاحها:**
+    // ✅ دالة تحديث المعاملة في collection transactions
+    async updateTransactionDirectly(transactionId, updateData) {
+      try {
+        const transactionRef = doc(db, "transactions", transactionId);
+        await updateDoc(transactionRef, {
+          ...updateData,
+          updatedAt: serverTimestamp()
+        });
+        console.log("✅ تم تحديث المعاملة:", transactionId);
+        return true;
+      } catch (error) {
+        console.error("❌ خطأ في تحديث المعاملة:", error);
+        return false;
+      }
+    },
+
+    // ✅ دالة إنشاء معاملة جديدة
+    async createTransactionForUser(userId, email, type, amount, status, reason = "", adminMessage = "") {
+      try {
+        const transactionData = {
+          transactionId: "TRX" + Date.now(),
+          userId: userId,
+          email: email,
+          type: type, // 'withdraw' أو 'recharge'
+          amount: amount,
+          currency: "USDT",
+          status: status,
+          adminAction: status === "approved" ? "approved" : status === "rejected" ? "rejected" : "",
+          userMessage: status === "approved" ? "تمت الموافقة على طلبك" : 
+                      status === "rejected" ? "تم رفض طلبك" : "",
+          reason: reason,
+          adminMessage: adminMessage,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          [status === "approved" ? "approvedAt" : status === "rejected" ? "rejectedAt" : ""]: serverTimestamp()
+        };
+
+        await addDoc(collection(db, "transactions"), transactionData);
+        console.log("✅ تم إنشاء معاملة جديدة للمستخدم:", userId);
+        return true;
+      } catch (error) {
+        console.error("❌ خطأ في إنشاء المعاملة:", error);
+        return false;
+      }
+    },
+
+    // ✅ دالة للموافقة على السحب
     async approveWithdraw(req) {
       if (!req || !req.id) return;
       const allowed = await this.ensureAdmin();
@@ -724,20 +683,20 @@ export default {
       if (!confirm(`تأكيد الموافقة على ${req.amount} USDT؟`)) return;
       this.processingId = req.id;
       try {
-        // 1. 🔥 تحديث المعاملة في transactions باستخدام userId وليس email
+        // 1. تحديث أو إنشاء المعاملة في transactions
         if (req.userId) {
-          await this.updateTransactionStatus(
+          await this.createTransactionForUser(
             req.userId,
-            req.amount,
+            req.email,
             "withdraw",
+            req.amount,
             "approved",
             "",
             "تمت الموافقة على طلب السحب"
           );
-        } else {
-          console.warn("⚠️ لا يوجد userId في طلب السحب");
         }
 
+        // 2. إضافة سجل
         await addDoc(collection(db, "withdraw_logs"), {
           userId: req.userId || null,
           email: req.email || null,
@@ -746,6 +705,7 @@ export default {
           createdAt: serverTimestamp(),
         });
         
+        // 3. إرسال إشعار للمستخدم
         if (req.userId) {
           await addDoc(
             collection(db, "users", req.userId, "notifications"),
@@ -758,9 +718,11 @@ export default {
           );
         }
         
+        // 4. حذف الطلب من withdraw_requests
         const r = doc(db, "withdraw_requests", req.id);
         const ex = await getDoc(r);
         if (ex.exists()) await deleteDoc(r);
+        
         alert("✔ تمت الموافقة");
         await this.loadWithdrawRequests();
         await this.loadWithdrawLogs();
@@ -774,7 +736,7 @@ export default {
       }
     },
     
-    // 🔥 🔴 **دالة rejectWithdraw المكسورة - إصلاحها:**
+    // ✅ دالة لرفض السحب مع سبب
     async rejectWithdraw(req, reason = "") {
       if (!req || !req.id) return;
       
@@ -789,12 +751,13 @@ export default {
       if (!confirm(`تأكيد رفض سحب ${req.amount}؟`)) return;
       this.processingId = req.id;
       try {
-        // 1. 🔥 تحديث المعاملة في transactions باستخدام userId
+        // 1. إنشاء معاملة مرفوضة في transactions
         if (req.userId) {
-          await this.updateTransactionStatus(
+          await this.createTransactionForUser(
             req.userId,
-            req.amount,
+            req.email,
             "withdraw",
+            req.amount,
             "rejected",
             reason,
             "تم رفض طلب السحب"
@@ -810,6 +773,7 @@ export default {
           } catch { }
         }
 
+        // 3. إضافة سجل الرفض
         await addDoc(collection(db, "withdraw_logs"), {
           userId: req.userId || null,
           email: req.email || null,
@@ -819,6 +783,7 @@ export default {
           createdAt: serverTimestamp(),
         });
 
+        // 4. إرسال إشعار للمستخدم مع السبب
         if (req.userId) {
           await addDoc(
             collection(db, "users", req.userId, "notifications"),
@@ -831,9 +796,11 @@ export default {
           );
         }
 
+        // 5. حذف الطلب
         const r = doc(db, "withdraw_requests", req.id);
         const ex = await getDoc(r);
         if (ex.exists()) await deleteDoc(r);
+        
         alert("❌ تم الرفض");
         await this.loadWithdrawRequests();
         await this.loadWithdrawLogs();
@@ -981,69 +948,7 @@ export default {
       alert("تم وضع إشعارات التعبئة كمقروءة (محلياً).");
     },
 
-    // 🔥 دالة حساب أرباح الفريق 3 مستويات عند الموافقة على التعبئة
-    async distributeTeamCommission(userId, amount) {
-      try {
-        const userRef = doc(db, "users", userId);
-        const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) return;
-
-        const userData = userSnap.data();
-        const level1 = userData.invitedBy || null;
-
-        const L1 = 0.05; // 5%
-        const L2 = 0.03; // 3%
-        const L3 = 0.01; // 1%
-
-        // LEVEL 1
-        if (level1) {
-          const r1 = doc(db, "users", level1);
-          const s1 = await getDoc(r1);
-
-          if (s1.exists()) {
-            const c1 = Number(s1.data().balance || 0);
-            await updateDoc(r1, { balance: c1 + amount * L1 });
-          }
-
-          // LEVEL 2
-          const level2 = s1.data().invitedBy || null;
-          if (level2) {
-            const r2 = doc(db, "users", level2);
-            const s2 = await getDoc(r2);
-
-            if (s2.exists()) {
-              const c2 = Number(s2.data().balance || 0);
-              await updateDoc(r2, { balance: c2 + amount * L2 });
-            }
-
-            // LEVEL 3
-            const level3 = s2.data().invitedBy || null;
-            if (level3) {
-              const r3 = doc(db, "users", level3);
-              const s3 = await getDoc(r3);
-
-              if (s3.exists()) {
-                const c3 = Number(s3.data().balance || 0);
-                await updateDoc(r3, { balance: c3 + amount * L3 });
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Commission error:", err);
-      }
-    },
-
-    // 🔥 دالة استدعاء الأرباح بعد الموافقة على التعبئة
-    async applyTeamCommission(uId, amt) {
-      try {
-        await this.distributeTeamCommission(uId, amt);
-      } catch (e) {
-        console.error("applyTeamCommission error:", e);
-      }
-    },
-
-    // 🔥 🔴 **دالة approveRecharge المكسورة - إصلاحها:**
+    // ✅ دالة للموافقة على التعبئة
     async approveRecharge(r) {
       if (!r || !r.id) return;
       const allowed = await this.ensureAdmin();
@@ -1051,21 +956,24 @@ export default {
       if (!confirm(`تأكيد الموافقة على تعبئة ${r.amount} USDT للمستخدم ${r.userEmail || r.userId || ''}?`)) return;
       this.processingId = r.id;
       try {
+        // 1. تحديث حالة الطلب في payments
         const pRef = doc(db, "payments", r.id);
         await updateDoc(pRef, { status: "approved", processedAt: serverTimestamp() });
 
-        // 🔥 تحديث المعاملة في transactions باستخدام userId وليس email
+        // 2. إنشاء معاملة في transactions
         if (r.userId) {
-          await this.updateTransactionStatus(
+          await this.createTransactionForUser(
             r.userId,
-            r.amount,
+            r.userEmail,
             "recharge",
+            r.amount,
             "approved",
             "",
             "تمت الموافقة على طلب التعبئة"
           );
         }
 
+        // 3. إضافة سجل
         await addDoc(collection(db, "recharge_logs"), {
           userId: r.userId || null,
           email: r.userEmail || null,
@@ -1074,6 +982,7 @@ export default {
           createdAt: serverTimestamp(),
         });
 
+        // 4. إرسال إشعار للمستخدم
         if (r.userId) {
           await addDoc(collection(db, "users", r.userId, "notifications"), {
             title: "تمت الموافقة على طلب التعبئة",
@@ -1082,14 +991,12 @@ export default {
             createdAt: serverTimestamp(),
           });
 
+          // 5. تحديث رصيد المستخدم
           try {
             const userRef = doc(db, "users", r.userId);
             const uSnap = await getDoc(userRef);
             const cur = uSnap.exists() ? Number(uSnap.data().balance || 0) : 0;
             await updateDoc(userRef, { balance: cur + Number(r.amount || 0) });
-
-            // 🔥 استدعاء نظام أرباح الفريق هنا - بعد تحديث رصيد المستخدم مباشرة
-            await this.applyTeamCommission(r.userId, Number(r.amount));
 
           } catch (err) {
             console.warn("failed to update user balance after recharge approval:", err);
@@ -1106,7 +1013,7 @@ export default {
       }
     },
 
-    // 🔥 🔴 **دالة rejectRecharge المكسورة - إصلاحها:**
+    // ✅ دالة لرفض التعبئة مع سبب
     async rejectRecharge(r, reason = "") {
       if (!r || !r.id) return;
       
@@ -1121,21 +1028,24 @@ export default {
       if (!confirm(`تأكيد رفض طلب التعبئة ${r.amount} USDT للمستخدم ${r.userEmail || r.userId || ''}?`)) return;
       this.processingId = r.id;
       try {
+        // 1. تحديث حالة الطلب في payments
         const pRef = doc(db, "payments", r.id);
         await updateDoc(pRef, { status: "rejected", processedAt: serverTimestamp() });
 
-        // 🔥 تحديث المعاملة في transactions باستخدام userId
+        // 2. إنشاء معاملة مرفوضة في transactions
         if (r.userId) {
-          await this.updateTransactionStatus(
+          await this.createTransactionForUser(
             r.userId,
-            r.amount,
+            r.userEmail,
             "recharge",
+            r.amount,
             "rejected",
             reason,
             "تم رفض طلب التعبئة"
           );
         }
 
+        // 3. إضافة سجل الرفض
         await addDoc(collection(db, "recharge_logs"), {
           userId: r.userId || null,
           email: r.userEmail || null,
@@ -1145,6 +1055,7 @@ export default {
           createdAt: serverTimestamp(),
         });
 
+        // 4. إرسال إشعار للمستخدم مع السبب
         if (r.userId) {
           await addDoc(collection(db, "users", r.userId, "notifications"), {
             title: "تم رفض طلب التعبئة",
