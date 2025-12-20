@@ -948,6 +948,187 @@ export default {
       alert("تم وضع إشعارات التعبئة كمقروءة (محلياً).");
     },
 
+    // ✅ دالة لحساب وإضافة أرباح الإحالة تلقائياً
+    async calculateAndAddReferralEarnings(userId, amount, rechargeId) {
+      try {
+        console.log(`🔗 بدء حساب أرباح الإحالة للمستخدم: ${userId}, المبلغ: ${amount}`);
+        
+        const userRef = doc(db, "users", userId);
+        const userSnap = await getDoc(userRef);
+        
+        if (!userSnap.exists()) {
+          console.log("❌ المستخدم غير موجود");
+          return;
+        }
+        
+        const userData = userSnap.data();
+        const userEmail = userData.email || "";
+        
+        // نسبة العمولات لكل مستوى
+        const commissionRates = {
+          level1: 5,   // 5% للمستوى الأول (invitedBy)
+          level2: 2,   // 2% للمستوى الثاني (level2)
+          level3: 1,   // 1% للمستوى الثالث (level3)
+        };
+        
+        // المستوى الأول: invitedBy
+        if (userData.invitedBy) {
+          try {
+            const level1Ref = doc(db, "users", userData.invitedBy);
+            const level1Snap = await getDoc(level1Ref);
+            
+            if (level1Snap.exists()) {
+              const level1Data = level1Snap.data();
+              const level1Amount = (amount * commissionRates.level1) / 100;
+              const newBalance = (level1Data.balance || 0) + level1Amount;
+              
+              // تحديث رصيد المحيل بالمستوى الأول
+              await updateDoc(level1Ref, { balance: newBalance });
+              
+              // إنشاء معاملة الإحالة للمستوى الأول
+              await addDoc(collection(db, "transactions"), {
+                transactionId: "REF" + Date.now() + Math.random().toString(36).substr(2, 5),
+                userId: userData.invitedBy,
+                email: level1Data.email || "",
+                type: "referral_commission",
+                amount: level1Amount,
+                currency: "USDT",
+                status: "completed",
+                details: {
+                  fromUserId: userId,
+                  fromEmail: userEmail,
+                  level: 1,
+                  percentage: commissionRates.level1,
+                  baseAmount: amount,
+                  rechargeId: rechargeId,
+                },
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              });
+              
+              // إرسال إشعار للمحيل بالمستوى الأول
+              await addDoc(collection(db, "users", userData.invitedBy, "notifications"), {
+                title: "💰 عمولة إحالة جديدة",
+                message: `لقد حصلت على عمولة إحالة بقيمة ${level1Amount} USDT (${commissionRates.level1}%) من ${userEmail}`,
+                read: false,
+                createdAt: serverTimestamp(),
+              });
+              
+              console.log(`✅ إضافة ${level1Amount} USDT (${commissionRates.level1}%) للمستوى الأول: ${level1Data.email}`);
+            }
+          } catch (error) {
+            console.error("❌ خطأ في حساب أرباح المستوى الأول:", error);
+          }
+        }
+        
+        // المستوى الثاني: level2
+        if (userData.level2) {
+          try {
+            const level2Ref = doc(db, "users", userData.level2);
+            const level2Snap = await getDoc(level2Ref);
+            
+            if (level2Snap.exists()) {
+              const level2Data = level2Snap.data();
+              const level2Amount = (amount * commissionRates.level2) / 100;
+              const newBalance = (level2Data.balance || 0) + level2Amount;
+              
+              // تحديث رصيد المحيل بالمستوى الثاني
+              await updateDoc(level2Ref, { balance: newBalance });
+              
+              // إنشاء معاملة الإحالة للمستوى الثاني
+              await addDoc(collection(db, "transactions"), {
+                transactionId: "REF" + Date.now() + Math.random().toString(36).substr(2, 6),
+                userId: userData.level2,
+                email: level2Data.email || "",
+                type: "referral_commission",
+                amount: level2Amount,
+                currency: "USDT",
+                status: "completed",
+                details: {
+                  fromUserId: userId,
+                  fromEmail: userEmail,
+                  level: 2,
+                  percentage: commissionRates.level2,
+                  baseAmount: amount,
+                  rechargeId: rechargeId,
+                },
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              });
+              
+              // إرسال إشعار للمحيل بالمستوى الثاني
+              await addDoc(collection(db, "users", userData.level2, "notifications"), {
+                title: "💰 عمولة إحالة جديدة",
+                message: `لقد حصلت على عمولة إحالة بقيمة ${level2Amount} USDT (${commissionRates.level2}%) من ${userEmail}`,
+                read: false,
+                createdAt: serverTimestamp(),
+              });
+              
+              console.log(`✅ إضافة ${level2Amount} USDT (${commissionRates.level2}%) للمستوى الثاني: ${level2Data.email}`);
+            }
+          } catch (error) {
+            console.error("❌ خطأ في حساب أرباح المستوى الثاني:", error);
+          }
+        }
+        
+        // المستوى الثالث: level3
+        if (userData.level3) {
+          try {
+            const level3Ref = doc(db, "users", userData.level3);
+            const level3Snap = await getDoc(level3Ref);
+            
+            if (level3Snap.exists()) {
+              const level3Data = level3Snap.data();
+              const level3Amount = (amount * commissionRates.level3) / 100;
+              const newBalance = (level3Data.balance || 0) + level3Amount;
+              
+              // تحديث رصيد المحيل بالمستوى الثالث
+              await updateDoc(level3Ref, { balance: newBalance });
+              
+              // إنشاء معاملة الإحالة للمستوى الثالث
+              await addDoc(collection(db, "transactions"), {
+                transactionId: "REF" + Date.now() + Math.random().toString(36).substr(2, 7),
+                userId: userData.level3,
+                email: level3Data.email || "",
+                type: "referral_commission",
+                amount: level3Amount,
+                currency: "USDT",
+                status: "completed",
+                details: {
+                  fromUserId: userId,
+                  fromEmail: userEmail,
+                  level: 3,
+                  percentage: commissionRates.level3,
+                  baseAmount: amount,
+                  rechargeId: rechargeId,
+                },
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              });
+              
+              // إرسال إشعار للمحيل بالمستوى الثالث
+              await addDoc(collection(db, "users", userData.level3, "notifications"), {
+                title: "💰 عمولة إحالة جديدة",
+                message: `لقد حصلت على عمولة إحالة بقيمة ${level3Amount} USDT (${commissionRates.level3}%) من ${userEmail}`,
+                read: false,
+                createdAt: serverTimestamp(),
+              });
+              
+              console.log(`✅ إضافة ${level3Amount} USDT (${commissionRates.level3}%) للمستوى الثالث: ${level3Data.email}`);
+            }
+          } catch (error) {
+            console.error("❌ خطأ في حساب أرباح المستوى الثالث:", error);
+          }
+        }
+        
+        console.log(`🎉 تم إكمال حساب أرباح الإحالة بنجاح`);
+        
+      } catch (error) {
+        console.error("❌ خطأ في حساب أرباح الإحالة:", error);
+        throw error;
+      }
+    },
+
     // ✅ دالة للموافقة على التعبئة
     async approveRecharge(r) {
       if (!r || !r.id) return;
@@ -998,12 +1179,15 @@ export default {
             const cur = uSnap.exists() ? Number(uSnap.data().balance || 0) : 0;
             await updateDoc(userRef, { balance: cur + Number(r.amount || 0) });
 
+            // 6. ⭐⭐⭐⭐⭐⭐ **السطر الجديد: حساب أرباح الإحالة**
+            await this.calculateAndAddReferralEarnings(r.userId, r.amount, r.id);
+
           } catch (err) {
             console.warn("failed to update user balance after recharge approval:", err);
           }
         }
 
-        alert("✔ تمت الموافقة على طلب التعبئة");
+        alert("✔ تمت الموافقة على طلب التعبئة وتم إضافة أرباح الإحالة");
       } catch (e) {
         console.error("approveRecharge error:", e);
         alert("خطأ أثناء الموافقة على الطلب");
