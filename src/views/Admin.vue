@@ -22,12 +22,8 @@
       <button :class="['tab', activeTab === 'notifications' ? 'active' : '']" @click="switchTab('notifications')">
         الإشعارات
       </button>
-      <button :class="['tab', activeTab === 'withdrawLogs' ? 'active' : '']" @click="switchTab('withdrawLogs')">
+      <button :class="['tab', activeTab === 'logs' ? 'active' : '']" @click="switchTab('logs')">
         سجل السحوبات
-      </button>
-      <!-- 🔥 علامة التبويب الجديدة لسجل التعبئة -->
-      <button :class="['tab', activeTab === 'rechargeLogs' ? 'active' : '']" @click="switchTab('rechargeLogs')">
-        سجل التعبئة
       </button>
     </div>
 
@@ -139,6 +135,11 @@
               <button class="btn black" type="button" @click="toggleBlockUser(u)">
                 {{ u.blocked ? 'إلغاء الحظر' : 'حظر' }}
               </button>
+              <!-- 🔥🔥🔥 إضافة زر التفاصيل هنا فقط (بدون تعديل الأزرار الأخرى) -->
+              <button class="btn purple" type="button" @click="showUserDetails(u)">
+                تفاصيل
+              </button>
+              <!-- 🔥🔥🔥 -->
               <button class="btn ghost" type="button" @click="viewUserNotifications(u)">
                 الإشعارات ({{ u.notificationsCount || 0 }})
               </button>
@@ -172,65 +173,25 @@
       </div>
     </div>
 
-    <!-- سجل السحوبات -->
-    <div v-if="activeTab === 'withdrawLogs'" class="panel">
+    <!-- السجلات -->
+    <div v-if="activeTab === 'logs'" class="panel">
       <div class="panel-header">
         <h2>سجل السحوبات</h2>
         <div class="controls">
-          <input v-model="withdrawLogFilter" placeholder="بحث بالسعر أو البريد..." />
+          <input v-model="logFilter" placeholder="بحث بالسعر أو البريد..." />
           <button @click="loadWithdrawLogs" type="button">تحديث</button>
         </div>
       </div>
 
-      <div v-if="loadingWithdrawLogs" class="loading">⏳ جاري تحميل السجلات...</div>
+      <div v-if="loadingLogs" class="loading">⏳ جاري تحميل السجلات...</div>
       <div v-else>
         <div v-if="withdrawLogs.length === 0" class="empty">لا توجد سجلات.</div>
         <div class="cards">
-          <div class="card log-card" v-for="l in filteredWithdrawLogs" :key="l.id">
+          <div class="card log-card" v-for="l in filteredLogs" :key="l.id">
             <p><strong>البريد:</strong> {{ l.email }}</p>
             <p><strong>المبلغ:</strong> {{ l.amount }} USDT</p>
             <p><strong>النوع:</strong> {{ l.type }}</p>
             <p class="muted">الوقت: {{ formatDate(l.createdAt) }}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 🔥 سجل التعبئة الجديد -->
-    <div v-if="activeTab === 'rechargeLogs'" class="panel">
-      <div class="panel-header">
-        <h2>سجل تعبئة الرصيد</h2>
-        <div class="controls">
-          <input v-model="rechargeLogFilter" placeholder="بحث بالبريد أو المبلغ..." />
-          <select v-model="rechargeLogSort">
-            <option value="newest">الأحدث أولاً</option>
-            <option value="oldest">الأقدم أولاً</option>
-            <option value="amount_desc">الأعلى مبلغ</option>
-            <option value="amount_asc">الأقل مبلغ</option>
-          </select>
-          <button @click="loadRechargeLogs" type="button">تحديث</button>
-        </div>
-      </div>
-
-      <div v-if="loadingRechargeLogs" class="loading">⏳ جاري تحميل سجلات التعبئة...</div>
-      <div v-else>
-        <div v-if="rechargeLogs.length === 0" class="empty">لا توجد سجلات تعبئة.</div>
-        <div class="cards">
-          <div class="card log-card" v-for="log in filteredRechargeLogs" :key="log.id">
-            <p><strong>البريد:</strong> {{ log.email || log.userEmail || '—' }}</p>
-            <p><strong>المبلغ:</strong> {{ log.amount }} USDT</p>
-            <p><strong>الحالة:</strong> 
-              <span :class="{
-                'status-approved': log.type === 'approved' || log.status === 'approved',
-                'status-rejected': log.type === 'rejected' || log.status === 'rejected',
-                'status-pending': log.type === 'pending' || log.status === 'pending'
-              }">
-                {{ log.type === 'approved' ? 'موافق' : log.type === 'rejected' ? 'مرفوض' : log.type || log.status || '—' }}
-              </span>
-            </p>
-            <p v-if="log.reason"><strong>سبب الرفض:</strong> {{ log.reason }}</p>
-            <p v-if="log.adminMessage"><strong>رسالة الأدمن:</strong> {{ log.adminMessage }}</p>
-            <p class="muted">التاريخ: {{ formatDate(log.createdAt) }}</p>
           </div>
         </div>
       </div>
@@ -318,6 +279,42 @@
         </div>
       </div>
     </div>
+
+    <!-- 🔥🔥🔥 Modal جديد: تفاصيل فريق المستخدم -->
+    <div v-if="showUserDetailsModal" class="modal-backdrop" @click.self="closeUserDetailsModal">
+      <div class="modal">
+        <h3>تفاصيل فريق: {{ userDetailsData.email || '—' }}</h3>
+        
+        <div v-if="loadingUserDetails" class="loading">⏳ جاري حساب تفاصيل الفريق...</div>
+        <div v-else>
+          <div class="user-details-content">
+            <div class="detail-row">
+              <span class="detail-label">البريد الإلكتروني:</span>
+              <span class="detail-value">{{ userDetailsData.email || '—' }}</span>
+            </div>
+            
+            <div class="detail-row">
+              <span class="detail-label">كود الدعوة:</span>
+              <span class="detail-value">{{ userDetailsData.inviteCode || 'غير محدد' }}</span>
+            </div>
+            
+            <div class="detail-row highlight">
+              <span class="detail-label">عدد الإحالات:</span>
+              <span class="detail-value">{{ userTeamStats.referralsCount || 0 }} مستخدم</span>
+            </div>
+            
+            <div class="detail-row highlight">
+              <span class="detail-label">شحن الفريق:</span>
+              <span class="detail-value">{{ userTeamStats.teamRecharge || 0 }} USDT</span>
+            </div>
+          </div>
+          
+          <div class="modal-actions">
+            <button class="btn ghost" type="button" @click="closeUserDetailsModal">إغلاق</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -366,15 +363,8 @@ export default {
       loadingNotifs: false,
       notifFilter: "",
       withdrawLogs: [],
-      loadingWithdrawLogs: false,
-      withdrawLogFilter: "",
-      
-      // 🔥 البيانات الجديدة لسجل التعبئة
-      rechargeLogs: [],
-      loadingRechargeLogs: false,
-      rechargeLogFilter: "",
-      rechargeLogSort: "newest",
-      
+      loadingLogs: false,
+      logFilter: "",
       showModal: false,
       modalData: {},
       modalType: "withdraw",
@@ -387,19 +377,28 @@ export default {
       currentUser: null,
       processingId: null,
 
-      // بيانات لموذج الرفض
+      // 🔥 بيانات لموذج الرفض
       showRejectModal: false,
       rejectModalData: {},
       rejectReason: "",
       rejectError: "",
       rejectType: "", // 'recharge' أو 'withdraw'
 
-      // بيانات لموذج الموافقة مع رسالة
+      // 🔥 بيانات لموذج الموافقة مع رسالة
       showApproveModal: false,
       approveModalData: {},
       approveMessage: "",
       approveError: "",
       approveType: "", // 'recharge' أو 'withdraw'
+
+      // 🔥🔥🔥 جديد: بيانات لعرض تفاصيل الفريق
+      showUserDetailsModal: false,
+      userDetailsData: {},
+      userTeamStats: {
+        referralsCount: 0,
+        teamRecharge: 0
+      },
+      loadingUserDetails: false
     };
   },
   computed: {
@@ -479,43 +478,14 @@ export default {
           (n.email || "").toLowerCase().includes(f)
       );
     },
-    filteredWithdrawLogs() {
-      if (!this.withdrawLogFilter) return this.withdrawLogs;
-      const f = this.withdrawLogFilter.toLowerCase();
+    filteredLogs() {
+      if (!this.logFilter) return this.withdrawLogs;
+      const f = this.logFilter.toLowerCase();
       return this.withdrawLogs.filter(
         (l) =>
           String(l.amount || "").includes(f) ||
           (l.email || "").toLowerCase().includes(f)
       );
-    },
-    // 🔥 computed جديد لتصفية سجلات التعبئة
-    filteredRechargeLogs() {
-      let list = [...this.rechargeLogs];
-      
-      // التصفية حسب البحث
-      if (this.rechargeLogFilter) {
-        const f = this.rechargeLogFilter.toLowerCase();
-        list = list.filter(
-          (log) =>
-            (log.email || "").toLowerCase().includes(f) ||
-            (log.userEmail || "").toLowerCase().includes(f) ||
-            String(log.amount || "").includes(f) ||
-            (log.type || "").toLowerCase().includes(f) ||
-            (log.status || "").toLowerCase().includes(f)
-        );
-      }
-      
-      // الترتيب
-      if (this.rechargeLogSort === "newest")
-        list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      else if (this.rechargeLogSort === "oldest")
-        list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-      else if (this.rechargeLogSort === "amount_desc")
-        list.sort((a, b) => (b.amount || 0) - (a.amount || 0));
-      else if (this.rechargeLogSort === "amount_asc")
-        list.sort((a, b) => (a.amount || 0) - (b.amount || 0));
-      
-      return list;
     },
   },
   created() {
@@ -553,86 +523,76 @@ export default {
     }
   },
   methods: {
-    // فتح موذج الموافقة
-    openApproveModal(data, type) {
-      this.approveModalData = data;
-      this.approveType = type;
-      this.approveMessage = "";
-      this.approveError = "";
-      this.showApproveModal = true;
-      this.showModal = false; // إغلاق الموذج القديم
-    },
-
-    // إغلاق موذج الموافقة
-    closeApproveModal() {
-      this.showApproveModal = false;
-      this.approveModalData = {};
-      this.approveMessage = "";
-      this.approveError = "";
-    },
-
-    // التحقق من رسالة الموافقة
-    validateApproveMessage() {
-      if (this.approveMessage.length > 500) {
-        this.approveError = "الرسالة يجب أن تكون أقل من 500 حرف";
-        return false;
+    // 🔥🔥🔥 جديد: دالة لعرض تفاصيل الفريق للمستخدم
+    async showUserDetails(user) {
+      this.userDetailsData = user;
+      this.showUserDetailsModal = true;
+      this.loadingUserDetails = true;
+      
+      try {
+        // 1️⃣ الحصول على بيانات المستخدم الكاملة من Firestore
+        const userDoc = await getDoc(doc(db, "users", user.id));
+        const fullUserData = userDoc.exists() ? userDoc.data() : {};
+        
+        // تحديث بيانات المستخدم بالتفاصيل الكاملة
+        this.userDetailsData = {
+          ...user,
+          ...fullUserData
+        };
+        
+        // إذا كان المستخدم لديه inviteCode، نحسب الإحالات
+        if (fullUserData.inviteCode) {
+          // 2️⃣ حساب عدد الإحالات (المستخدمين الذين قيمة invitedBy لديهم تساوي userId هذا)
+          const referralsQuery = query(
+            collection(db, "users"),
+            where("invitedBy", "==", user.id)
+          );
+          const referralsSnapshot = await getDocs(referralsQuery);
+          
+          // 3️⃣ حساب شحن الفريق (مجموع balance للمستخدمين المحالين)
+          let teamRechargeTotal = 0;
+          
+          referralsSnapshot.forEach((doc) => {
+            const referralData = doc.data();
+            // نستخدم balance كشحن للفريق
+            const referralBalance = referralData.balance || 0;
+            teamRechargeTotal += Number(referralBalance);
+          });
+          
+          // 4️⃣ تخزين النتائج
+          this.userTeamStats = {
+            referralsCount: referralsSnapshot.size,
+            teamRecharge: teamRechargeTotal.toFixed(2)
+          };
+        } else {
+          // إذا لم يكن لديه inviteCode
+          this.userTeamStats = {
+            referralsCount: 0,
+            teamRecharge: 0
+          };
+        }
+        
+      } catch (error) {
+        console.error("خطأ في حساب تفاصيل الفريق:", error);
+        // في حالة حدوث خطأ، نعرض قيم صفرية
+        this.userTeamStats = {
+          referralsCount: 0,
+          teamRecharge: 0
+        };
+      } finally {
+        this.loadingUserDetails = false;
       }
-      this.approveError = "";
-      return true;
     },
-
-    // تأكيد الموافقة
-    async confirmApprove() {
-      if (!this.validateApproveMessage()) return;
-
-      if (this.approveType === 'recharge') {
-        await this.approveRechargeWithMessage(this.approveModalData, this.approveMessage);
-      } else if (this.approveType === 'withdraw') {
-        await this.approveWithdrawWithMessage(this.approveModalData, this.approveMessage);
-      }
-    },
-
-    // فتح موذج الرفض
-    openRejectModal(data, type) {
-      this.rejectModalData = data;
-      this.rejectType = type;
-      this.rejectReason = "";
-      this.rejectError = "";
-      this.showRejectModal = true;
-      this.showModal = false; // إغلاق الموذج القديم
-    },
-
-    // إغلاق موذج الرفض
-    closeRejectModal() {
-      this.showRejectModal = false;
-      this.rejectModalData = {};
-      this.rejectReason = "";
-      this.rejectError = "";
-    },
-
-    // التحقق من سبب الرفض
-    validateRejectReason() {
-      if (!this.rejectReason || this.rejectReason.trim() === "") {
-        this.rejectError = "يجب إدخال سبب الرفض";
-        return false;
-      }
-      if (this.rejectReason.length < 1 || this.rejectReason.length > 500) {
-        this.rejectError = "سبب الرفض يجب أن يكون بين 1 و 500 حرف";
-        return false;
-      }
-      this.rejectError = "";
-      return true;
-    },
-
-    // تأكيد الرفض
-    async confirmReject() {
-      if (!this.validateRejectReason()) return;
-
-      if (this.rejectType === 'recharge') {
-        await this.rejectRecharge(this.rejectModalData, this.rejectReason);
-      } else if (this.rejectType === 'withdraw') {
-        await this.rejectWithdraw(this.rejectModalData, this.rejectReason);
-      }
+    
+    // 🔥🔥🔥 جديد: دالة لإغلاق نافذة تفاصيل الفريق
+    closeUserDetailsModal() {
+      this.showUserDetailsModal = false;
+      this.userDetailsData = {};
+      this.userTeamStats = {
+        referralsCount: 0,
+        teamRecharge: 0
+      };
+      this.loadingUserDetails = false;
     },
 
     async logout() {
@@ -644,21 +604,16 @@ export default {
         alert("خطأ أثناء تسجيل الخروج");
       }
     },
-    
     switchTab(tab) {
       this.activeTab = tab;
       if (tab === "withdraws") this.loadWithdrawRequests();
       else if (tab === "users") this.loadUsers();
       else if (tab === "notifications") this.loadAllNotifications();
-      else if (tab === "withdrawLogs") this.loadWithdrawLogs();
+      else if (tab === "logs") this.loadWithdrawLogs();
       else if (tab === "recharges") {
         this.reloadRechargeRequests();
       }
-      else if (tab === "rechargeLogs") { // 🔥 تحميل سجلات التعبئة عند النقر على التبويب
-        this.loadRechargeLogs();
-      }
     },
-    
     async loadUsers() {
       try {
         this.loadingUsers = true;
@@ -679,13 +634,11 @@ export default {
         this.loadingUsers = false;
       }
     },
-    
     promptRecharge(user) {
       const a = prompt("أدخل مبلغ التعبئة:");
       if (!a || isNaN(a)) return;
       this.rechargeUser(user.id, Number(a));
     },
-    
     async rechargeUser(userId, amount) {
       try {
         const r = doc(db, "users", userId);
@@ -698,13 +651,11 @@ export default {
         alert("خطأ أثناء تعبئة الرصيد");
       }
     },
-    
     promptDeduct(user) {
       const a = prompt("أدخل مبلغ الخصم:");
       if (!a || isNaN(a)) return;
       this.deductUser(user.id, Number(a));
     },
-    
     async deductUser(userId, amount) {
       try {
         const r = doc(db, "users", userId);
@@ -717,7 +668,6 @@ export default {
         alert("خطأ أثناء خصم الرصيد");
       }
     },
-    
     async sendResetPassword(email) {
       try {
         const auth = getAuth();
@@ -727,7 +677,6 @@ export default {
         alert("خطأ أثناء إرسال الرابط");
       }
     },
-    
     async toggleBlockUser(user) {
       try {
         await updateDoc(doc(db, "users", user.id), {
@@ -739,12 +688,10 @@ export default {
         alert("خطأ أثناء تحديث الحالة");
       }
     },
-    
     async viewUserNotifications(user) {
       await this.loadNotificationsForUser(user.id);
       this.activeTab = "notifications";
     },
-    
     async loadWithdrawRequests() {
       try {
         this.loadingWithdraws = true;
@@ -773,19 +720,16 @@ export default {
         this.loadingWithdraws = false;
       }
     },
-    
     viewWithdrawDetails(req) {
       this.modalData = req || {};
       this.modalType = "withdraw";
       this.showModal = true;
     },
-    
     closeModal() {
       this.showModal = false;
       this.modalData = {};
       this.modalType = "withdraw";
     },
-    
     async ensureAdmin() {
       try {
         const auth = getAuth();
@@ -847,7 +791,7 @@ export default {
       }
     },
 
-    // دالة للموافقة على السحب مع رسالة
+    // 🔥 جديد: دالة للموافقة على السحب مع رسالة
     async approveWithdrawWithMessage(req, message = "") {
       if (!req || !req.id) return;
       const allowed = await this.ensureAdmin();
@@ -913,7 +857,7 @@ export default {
       }
     },
     
-    // دالة للموافقة على التعبئة مع رسالة
+    // 🔥 جديد: دالة للموافقة على التعبئة مع رسالة
     async approveRechargeWithMessage(r, message = "") {
       if (!r || !r.id) return;
       const allowed = await this.ensureAdmin();
@@ -1083,7 +1027,6 @@ export default {
         this.loadingNotifs = false;
       }
     },
-    
     async loadNotificationsForUser(id) {
       try {
         this.loadingNotifs = true;
@@ -1101,10 +1044,9 @@ export default {
         this.loadingNotifs = false;
       }
     },
-    
     async loadWithdrawLogs() {
       try {
-        this.loadingWithdrawLogs = true;
+        this.loadingLogs = true;
         const snap = await getDocs(collection(db, "withdraw_logs"));
         this.withdrawLogs = snap.docs.map((d) => ({
           id: d.id,
@@ -1113,83 +1055,9 @@ export default {
       } catch (e) {
         this.withdrawLogs = [];
       } finally {
-        this.loadingWithdrawLogs = false;
+        this.loadingLogs = false;
       }
     },
-    
-    // 🔥 دالة جديدة لتحميل سجلات التعبئة
-    async loadRechargeLogs() {
-      try {
-        this.loadingRechargeLogs = true;
-        
-        // محاولة جلب البيانات من collection recharge_logs أولاً
-        try {
-          const rechargeLogsSnap = await getDocs(query(
-            collection(db, "recharge_logs"),
-            orderBy("createdAt", "desc")
-          ));
-          
-          this.rechargeLogs = rechargeLogsSnap.docs.map((d) => {
-            const data = d.data() || {};
-            return {
-              id: d.id,
-              type: data.type || '',
-              amount: data.amount || 0,
-              email: data.email || data.userEmail || '',
-              userEmail: data.userEmail || data.email || '',
-              reason: data.reason || '',
-              adminMessage: data.adminMessage || '',
-              createdAt: data.createdAt,
-            };
-          });
-          
-          // إذا وجدنا سجلات في recharge_logs، نوقف هنا
-          if (this.rechargeLogs.length > 0) {
-            console.log(`✅ تم تحميل ${this.rechargeLogs.length} سجل تعبئة من recharge_logs`);
-            return;
-          }
-        } catch (err) {
-          console.log("⚠ لا يوجد collection recharge_logs، جارٍ البحث في transactions...");
-        }
-        
-        // إذا لم توجد سجلات في recharge_logs، نبحث في transactions
-        try {
-          const transactionsSnap = await getDocs(query(
-            collection(db, "transactions"),
-            where("type", "==", "recharge"),
-            orderBy("createdAt", "desc")
-          ));
-          
-          this.rechargeLogs = transactionsSnap.docs.map((d) => {
-            const data = d.data() || {};
-            return {
-              id: d.id,
-              type: data.status || '',
-              status: data.status || '',
-              amount: data.amount || 0,
-              email: data.email || '',
-              userEmail: data.email || '',
-              reason: data.reason || '',
-              adminMessage: data.adminMessage || '',
-              createdAt: data.createdAt,
-            };
-          });
-          
-          console.log(`✅ تم تحميل ${this.rechargeLogs.length} سجل تعبئة من transactions`);
-          
-        } catch (err) {
-          console.error("❌ خطأ في تحميل سجلات التعبئة:", err);
-          this.rechargeLogs = [];
-        }
-        
-      } catch (e) {
-        console.error("خطأ عام في تحميل سجلات التعبئة:", e);
-        this.rechargeLogs = [];
-      } finally {
-        this.loadingRechargeLogs = false;
-      }
-    },
-    
     formatDate(ts) {
       if (!ts) return "-";
       try {
@@ -1199,7 +1067,6 @@ export default {
         return String(ts);
       }
     },
-    
     attachRechargeListener() {
       try {
         if (this.rechargeUnsubscribe) {
@@ -1242,7 +1109,6 @@ export default {
         this.loadingRecharges = false;
       }
     },
-    
     async reloadRechargeRequests() {
       this.loadingRecharges = true;
       try {
@@ -1272,13 +1138,11 @@ export default {
         this.loadingRecharges = false;
       }
     },
-    
     viewRechargeDetails(r) {
       this.modalData = r || {};
       this.modalType = "recharge";
       this.showModal = true;
     },
-    
     async markAllRechargeNotificationsRead() {
       alert("تم وضع إشعارات التعبئة كمقروءة (محلياً).");
     },
@@ -1550,14 +1414,12 @@ export default {
         this.processingId = null;
       }
     },
-    
     detachRechargeListener() {
       if (this.rechargeUnsubscribe) {
         try { this.rechargeUnsubscribe(); } catch (e) {}
         this.rechargeUnsubscribe = null;
       }
     },
-    
     async markAllRechargeNotificationsReadServerSide() {
       alert("ميزة وضع الإشعارات كمقروءة تحتاج تنفيذ على حسب تصميم قاعدة البيانات.");
     },
@@ -1566,6 +1428,53 @@ export default {
 </script>
 
 <style scoped>
+/* 🔥 إضافة لون جديد لزر التفاصيل */
+.purple {
+  background: linear-gradient(90deg, #8B5CF6, #7C3AED);
+  color: white;
+}
+
+.purple:hover {
+  background: linear-gradient(90deg, #7C3AED, #6D28D9);
+}
+
+/* 🔥 تنسيق نافذة تفاصيل الفريق */
+.user-details-content {
+  padding: 15px 0;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-row.highlight {
+  background-color: #f8f9ff;
+  padding: 12px;
+  border-radius: 8px;
+  margin: 10px 0;
+  border: 1px solid #e0e7ff;
+}
+
+.detail-label {
+  font-weight: 600;
+  color: #333;
+  font-size: 12px;
+}
+
+.detail-value {
+  font-weight: 600;
+  color: #0b5cff;
+  font-size: 12px;
+}
+
 /* تحسينات التصغير والضغط */
 .header-row {
   display: flex;
@@ -1787,7 +1696,7 @@ export default {
   padding: 12px;
   border-radius: 8px;
   width: 90%;
-  max-width: 400px;
+  max-width: 500px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
   max-height: 80vh;
   overflow-y: auto;
@@ -1811,22 +1720,6 @@ export default {
   gap: 8px;
   margin-top: 10px;
   justify-content: flex-end;
-}
-
-/* 🔥 أنماط جديدة لحالات السجلات */
-.status-approved {
-  color: #28a745;
-  font-weight: bold;
-}
-
-.status-rejected {
-  color: #dc3545;
-  font-weight: bold;
-}
-
-.status-pending {
-  color: #ffc107;
-  font-weight: bold;
 }
 
 /* تحسينات للعرض على الشاشات الصغيرة */
