@@ -77,14 +77,14 @@ export default {
       position: 0,
       result: "",
 
-      // ⬇️ المضاعفات (أول خطوة بدون ربح)
+      // ✅ نسب الفوز تبدأ من 35% وتتناقص
       steps: [
-        { multiplier: 1.0, winChance: 0.15 }, // 15%
-        { multiplier: 1.2, winChance: 0.10 }, // 10%
-        { multiplier: 1.5, winChance: 0.07 }, // 7%
-        { multiplier: 2.0, winChance: 0.04 }, // 4%
-        { multiplier: 3.0, winChance: 0.02 }, // 2%
-        { multiplier: 5.0, winChance: 0.01 }, // 1%
+        { multiplier: 1.0, winChance: 0.35 }, // 35%
+        { multiplier: 1.2, winChance: 0.25 }, // 25%
+        { multiplier: 1.5, winChance: 0.18 }, // 18%
+        { multiplier: 2.0, winChance: 0.12 }, // 12%
+        { multiplier: 3.0, winChance: 0.07 }, // 7%
+        { multiplier: 5.0, winChance: 0.04 }, // 4%
       ],
     };
   },
@@ -127,7 +127,7 @@ export default {
       const user = auth.currentUser;
       if (!user) return;
 
-      // خصم الرهان
+      // خصم الرهان مباشرة
       this.balance -= this.bet;
       await updateDoc(doc(db, "users", user.uid), {
         balance: this.balance,
@@ -145,6 +145,7 @@ export default {
       if (roll > step.winChance) {
         this.result = "💥 خسرت! المخاطرة كانت أعلى من الحظ";
         this.started = false;
+        this.bet = null;
         return;
       }
 
