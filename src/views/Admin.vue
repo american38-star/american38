@@ -22,8 +22,12 @@
       <button :class="['tab', activeTab === 'notifications' ? 'active' : '']" @click="switchTab('notifications')">
         الإشعارات
       </button>
-      <button :class="['tab', activeTab === 'logs' ? 'active' : '']" @click="switchTab('logs')">
+      <button :class="['tab', activeTab === 'withdrawLogs' ? 'active' : '']" @click="switchTab('withdrawLogs')">
         سجل السحوبات
+      </button>
+      <!-- 🔥 علامة التبويب الجديدة لسجل التعبئة -->
+      <button :class="['tab', activeTab === 'rechargeLogs' ? 'active' : '']" @click="switchTab('rechargeLogs')">
+        سجل التعبئة
       </button>
     </div>
 
@@ -54,7 +58,7 @@
             <p><strong>المحفظة:</strong> {{ req.wallet || '—' }}</p>
             <p class="muted">تم الإنشاء: {{ formatDate(req.createdAt) }}</p>
             <div class="card-actions">
-              <button class="btn green" type="button" @click.stop="approveWithdraw(req)" :disabled="processingId === req.id">موافقة</button>
+              <button class="btn green" type="button" @click.stop="openApproveModal(req, 'withdraw')" :disabled="processingId === req.id">موافقة</button>
               <button class="btn red" type="button" @click.stop="openRejectModal(req, 'withdraw')" :disabled="processingId === req.id">رفض</button>
               <button class="btn ghost" type="button" @click.stop="viewWithdrawDetails(req)">تفاصيل</button>
             </div>
@@ -95,7 +99,7 @@
             <p v-if="r.txid"><strong>TxID:</strong> {{ r.txid }}</p>
             <p class="muted">تم الإنشاء: {{ formatDate(r.createdAt) }}</p>
             <div class="card-actions">
-              <button class="btn green" type="button" @click.stop="approveRecharge(r)" :disabled="processingId === r.id || r.status === 'approved'">موافقة</button>
+              <button class="btn green" type="button" @click.stop="openApproveModal(r, 'recharge')" :disabled="processingId === r.id || r.status === 'approved'">موافقة</button>
               <button class="btn red" type="button" @click.stop="openRejectModal(r, 'recharge')" :disabled="processingId === r.id || r.status === 'rejected'">رفض</button>
               <button class="btn black" type="button" @click.stop="deleteRecharge(r)" :disabled="processingId === r.id">حذف</button>
               <button class="btn ghost" type="button" @click.stop="viewRechargeDetails(r)">تفاصيل</button>
@@ -172,25 +176,65 @@
       </div>
     </div>
 
-    <!-- السجلات -->
-    <div v-if="activeTab === 'logs'" class="panel">
+    <!-- سجل السحوبات -->
+    <div v-if="activeTab === 'withdrawLogs'" class="panel">
       <div class="panel-header">
         <h2>سجل السحوبات</h2>
         <div class="controls">
-          <input v-model="logFilter" placeholder="بحث بالسعر أو البريد..." />
+          <input v-model="withdrawLogFilter" placeholder="بحث بالسعر أو البريد..." />
           <button @click="loadWithdrawLogs" type="button">تحديث</button>
         </div>
       </div>
 
-      <div v-if="loadingLogs" class="loading">⏳ جاري تحميل السجلات...</div>
+      <div v-if="loadingWithdrawLogs" class="loading">⏳ جاري تحميل السجلات...</div>
       <div v-else>
         <div v-if="withdrawLogs.length === 0" class="empty">لا توجد سجلات.</div>
         <div class="cards">
-          <div class="card log-card" v-for="l in filteredLogs" :key="l.id">
+          <div class="card log-card" v-for="l in filteredWithdrawLogs" :key="l.id">
             <p><strong>البريد:</strong> {{ l.email }}</p>
             <p><strong>المبلغ:</strong> {{ l.amount }} USDT</p>
             <p><strong>النوع:</strong> {{ l.type }}</p>
             <p class="muted">الوقت: {{ formatDate(l.createdAt) }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 🔥 سجل التعبئة الجديد -->
+    <div v-if="activeTab === 'rechargeLogs'" class="panel">
+      <div class="panel-header">
+        <h2>سجل تعبئة الرصيد</h2>
+        <div class="controls">
+          <input v-model="rechargeLogFilter" placeholder="بحث بالبريد أو المبلغ..." />
+          <select v-model="rechargeLogSort">
+            <option value="newest">الأحدث أولاً</option>
+            <option value="oldest">الأقدم أولاً</option>
+            <option value="amount_desc">الأعلى مبلغ</option>
+            <option value="amount_asc">الأقل مبلغ</option>
+          </select>
+          <button @click="loadRechargeLogs" type="button">تحديث</button>
+        </div>
+      </div>
+
+      <div v-if="loadingRechargeLogs" class="loading">⏳ جاري تحميل سجلات التعبئة...</div>
+      <div v-else>
+        <div v-if="rechargeLogs.length === 0" class="empty">لا توجد سجلات تعبئة.</div>
+        <div class="cards">
+          <div class="card log-card" v-for="log in filteredRechargeLogs" :key="log.id">
+            <p><strong>البريد:</strong> {{ log.email || log.userEmail || '—' }}</p>
+            <p><strong>المبلغ:</strong> {{ log.amount }} USDT</p>
+            <p><strong>الحالة:</strong> 
+              <span :class="{
+                'status-approved': log.type === 'approved' || log.status === 'approved',
+                'status-rejected': log.type === 'rejected' || log.status === 'rejected',
+                'status-pending': log.type === 'pending' || log.status === 'pending'
+              }">
+                {{ log.type === 'approved' ? 'موافق' : log.type === 'rejected' ? 'مرفوض' : log.type || log.status || '—' }}
+              </span>
+            </p>
+            <p v-if="log.reason"><strong>سبب الرفض:</strong> {{ log.reason }}</p>
+            <p v-if="log.adminMessage"><strong>رسالة الأدمن:</strong> {{ log.adminMessage }}</p>
+            <p class="muted">التاريخ: {{ formatDate(log.createdAt) }}</p>
           </div>
         </div>
       </div>
@@ -226,6 +270,36 @@
       </div>
     </div>
 
+    <!-- Modal موافقة مع رسالة -->
+    <div v-if="showApproveModal" class="modal-backdrop" @click.self="closeApproveModal">
+      <div class="modal">
+        <h3>رسالة الموافقة</h3>
+        <p><strong>المبلغ:</strong> {{ approveModalData.amount }} USDT</p>
+        <p><strong>المستخدم:</strong> {{ approveModalData.email || approveModalData.userEmail || '—' }}</p>
+        <p><strong>النوع:</strong> {{ approveModalData.type === 'recharge' ? 'تعبئة' : 'سحب' }}</p>
+        
+        <div class="input-box" style="margin-top: 15px;">
+          <label>رسالة للمستخدم (اختياري - 0-500 حرف)</label>
+          <textarea 
+            v-model="approveMessage" 
+            placeholder="أدخل رسالة تهنئة أو تعليمات للمستخدم..."
+            rows="4"
+            style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ccc;"
+          ></textarea>
+          <div v-if="approveError" style="color: red; font-size: 12px; margin-top: 5px;">
+            {{ approveError }}
+          </div>
+        </div>
+        
+        <div class="modal-actions">
+          <button class="btn green" type="button" @click="confirmApprove" :disabled="processingId === approveModalData.id">
+            تأكيد الموافقة
+          </button>
+          <button class="btn ghost" type="button" @click="closeApproveModal">إلغاء</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Modal تفاصيل -->
     <div v-if="showModal" class="modal-backdrop" @click.self="closeModal">
       <div class="modal">
@@ -240,9 +314,9 @@
         <p v-if="modalType === 'recharge' && modalData.txid"><strong>TxID:</strong> {{ modalData.txid }}</p>
         <p class="muted">تم الإنشاء: {{ formatDate(modalData.createdAt) }}</p>
         <div class="modal-actions">
-          <button v-if="modalType === 'withdraw'" class="btn green" type="button" @click.stop="approveWithdraw(modalData)" :disabled="processingId === modalData.id">موافقة</button>
+          <button v-if="modalType === 'withdraw'" class="btn green" type="button" @click.stop="openApproveModal(modalData, 'withdraw')" :disabled="processingId === modalData.id">موافقة</button>
           <button v-if="modalType === 'withdraw'" class="btn red" type="button" @click.stop="openRejectModal(modalData, 'withdraw')" :disabled="processingId === modalData.id">رفض</button>
-          <button v-if="modalType === 'recharge'" class="btn green" type="button" @click.stop="approveRecharge(modalData)" :disabled="processingId === modalData.id || modalData.status === 'approved'">موافقة</button>
+          <button v-if="modalType === 'recharge'" class="btn green" type="button" @click.stop="openApproveModal(modalData, 'recharge')" :disabled="processingId === modalData.id || modalData.status === 'approved'">موافقة</button>
           <button v-if="modalType === 'recharge'" class="btn red" type="button" @click.stop="openRejectModal(modalData, 'recharge')" :disabled="processingId === modalData.id || modalData.status === 'rejected'">رفض</button>
           <button class="btn ghost" type="button" @click="closeModal">إغلاق</button>
         </div>
@@ -292,7 +366,6 @@
     </div>
   </div>
 </template>
-
 <script>
 import {
   getAuth,
@@ -338,8 +411,15 @@ export default {
       loadingNotifs: false,
       notifFilter: "",
       withdrawLogs: [],
-      loadingLogs: false,
-      logFilter: "",
+      loadingWithdrawLogs: false,
+      withdrawLogFilter: "",
+      
+      // 🔥 البيانات الجديدة لسجل التعبئة
+      rechargeLogs: [],
+      loadingRechargeLogs: false,
+      rechargeLogFilter: "",
+      rechargeLogSort: "newest",
+      
       showModal: false,
       modalData: {},
       modalType: "withdraw",
@@ -358,6 +438,13 @@ export default {
       rejectReason: "",
       rejectError: "",
       rejectType: "", // 'recharge' أو 'withdraw'
+
+      // بيانات لموذج الموافقة مع رسالة
+      showApproveModal: false,
+      approveModalData: {},
+      approveMessage: "",
+      approveError: "",
+      approveType: "", // 'recharge' أو 'withdraw'
 
       // بيانات لعرض تفاصيل الفريق
       showUserDetailsModal: false,
@@ -446,14 +533,43 @@ export default {
           (n.email || "").toLowerCase().includes(f)
       );
     },
-    filteredLogs() {
-      if (!this.logFilter) return this.withdrawLogs;
-      const f = this.logFilter.toLowerCase();
+    filteredWithdrawLogs() {
+      if (!this.withdrawLogFilter) return this.withdrawLogs;
+      const f = this.withdrawLogFilter.toLowerCase();
       return this.withdrawLogs.filter(
         (l) =>
           String(l.amount || "").includes(f) ||
           (l.email || "").toLowerCase().includes(f)
       );
+    },
+    // 🔥 computed جديد لتصفية سجلات التعبئة
+    filteredRechargeLogs() {
+      let list = [...this.rechargeLogs];
+      
+      // التصفية حسب البحث
+      if (this.rechargeLogFilter) {
+        const f = this.rechargeLogFilter.toLowerCase();
+        list = list.filter(
+          (log) =>
+            (log.email || "").toLowerCase().includes(f) ||
+            (log.userEmail || "").toLowerCase().includes(f) ||
+            String(log.amount || "").includes(f) ||
+            (log.type || "").toLowerCase().includes(f) ||
+            (log.status || "").toLowerCase().includes(f)
+        );
+      }
+      
+      // الترتيب
+      if (this.rechargeLogSort === "newest")
+        list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      else if (this.rechargeLogSort === "oldest")
+        list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      else if (this.rechargeLogSort === "amount_desc")
+        list.sort((a, b) => (b.amount || 0) - (a.amount || 0));
+      else if (this.rechargeLogSort === "amount_asc")
+        list.sort((a, b) => (a.amount || 0) - (b.amount || 0));
+      
+      return list;
     },
   },
   created() {
@@ -595,13 +711,51 @@ export default {
       this.loadingUserDetails = false;
     },
 
-    // 🚀 دالة الموافقة على السحب (مباشرة بدون modal)
-    async approveWithdraw(req) {
+    // 🔥 فتح موذج الموافقة
+    openApproveModal(data, type) {
+      this.approveModalData = data;
+      this.approveType = type;
+      this.approveMessage = "";
+      this.approveError = "";
+      this.showApproveModal = true;
+      this.showModal = false; // إغلاق الموذج القديم
+    },
+
+    // 🔥 إغلاق موذج الموافقة
+    closeApproveModal() {
+      this.showApproveModal = false;
+      this.approveModalData = {};
+      this.approveMessage = "";
+      this.approveError = "";
+    },
+
+    // 🔥 التحقق من رسالة الموافقة
+    validateApproveMessage() {
+      if (this.approveMessage.length > 500) {
+        this.approveError = "الرسالة يجب أن تكون أقل من 500 حرف";
+        return false;
+      }
+      this.approveError = "";
+      return true;
+    },
+
+    // 🔥 تأكيد الموافقة
+    async confirmApprove() {
+      if (!this.validateApproveMessage()) return;
+
+      if (this.approveType === 'recharge') {
+        await this.approveRechargeWithMessage(this.approveModalData, this.approveMessage);
+      } else if (this.approveType === 'withdraw') {
+        await this.approveWithdrawWithMessage(this.approveModalData, this.approveMessage);
+      }
+    },
+
+    // 🔥 دالة للموافقة على السحب مع رسالة
+    async approveWithdrawWithMessage(req, message = "") {
       if (!req || !req.id) return;
       const allowed = await this.ensureAdmin();
       if (!allowed) return alert("غير مصرح لك");
-      if (!confirm(`تأكيد الموافقة على سحب ${req.amount} USDT؟`)) return;
-      
+      if (!confirm(`تأكيد الموافقة على ${req.amount} USDT؟`)) return;
       this.processingId = req.id;
       try {
         // 1. تحديث رصيد المستخدم
@@ -615,72 +769,86 @@ export default {
           }
         }
 
-        // 2. إنشاء سجل السحب
+        // 2. إضافة سجل
         await addDoc(collection(db, "withdraw_logs"), {
           userId: req.userId || null,
           email: req.email || null,
           amount: req.amount || 0,
           type: "approved",
+          adminMessage: message || "",
           createdAt: serverTimestamp(),
         });
-
-        // 3. إرسال إشعار للمستخدم
+        
+        // 3. إرسال إشعار للمستخدم مع الرسالة
         if (req.userId) {
+          const notificationMessage = message 
+            ? `تم تحويل ${req.amount} USDT. ${message}`
+            : `تم تحويل ${req.amount} USDT.`;
+            
           await addDoc(
             collection(db, "users", req.userId, "notifications"),
             {
               title: "تمت الموافقة على السحب",
-              message: `تم تحويل ${req.amount} USDT إلى محفظتك`,
+              message: notificationMessage,
               read: false,
               createdAt: serverTimestamp(),
             }
           );
         }
-
-        // 4. حذف الطلب من withdraw_requests
-        await deleteDoc(doc(db, "withdraw_requests", req.id));
         
-        alert("✔ تمت الموافقة على السحب");
+        // 4. حذف الطلب من withdraw_requests
+        const r = doc(db, "withdraw_requests", req.id);
+        const ex = await getDoc(r);
+        if (ex.exists()) await deleteDoc(r);
+        
+        alert("✔ تمت الموافقة");
         await this.loadWithdrawRequests();
         await this.loadWithdrawLogs();
       } catch (e) {
-        console.error("خطأ في الموافقة على السحب:", e);
-        alert("خطأ في الموافقة على السحب");
+        console.error("خطأ في الموافقة:", e);
+        alert("خطأ في الموافقة");
       } finally {
         this.processingId = null;
+        this.closeModal();
+        this.closeApproveModal();
       }
     },
-
-    // 🚀 دالة الموافقة على التعبئة (مباشرة بدون modal)
-    async approveRecharge(r) {
+    
+    // 🔥 دالة للموافقة على التعبئة مع رسالة
+    async approveRechargeWithMessage(r, message = "") {
       if (!r || !r.id) return;
       const allowed = await this.ensureAdmin();
       if (!allowed) return alert("غير مصرح لك");
       if (!confirm(`تأكيد الموافقة على تعبئة ${r.amount} USDT للمستخدم ${r.userEmail || r.userId || ''}?`)) return;
-      
       this.processingId = r.id;
       try {
         // 1. تحديث حالة الطلب في payments
         const pRef = doc(db, "payments", r.id);
         await updateDoc(pRef, { 
           status: "approved", 
-          processedAt: serverTimestamp()
+          processedAt: serverTimestamp(),
+          adminMessage: message || ""
         });
 
-        // 2. إضافة سجل
+        // 2. إضافة سجل مع الرسالة
         await addDoc(collection(db, "recharge_logs"), {
           userId: r.userId || null,
           email: r.userEmail || null,
           amount: r.amount || 0,
           type: "approved",
+          adminMessage: message || "",
           createdAt: serverTimestamp(),
         });
 
-        // 3. إرسال إشعار للمستخدم
+        // 3. إرسال إشعار للمستخدم مع الرسالة
         if (r.userId) {
+          const notificationMessage = message 
+            ? `تمت إضافة ${r.amount} USDT إلى حسابك. ${message}`
+            : `تمت إضافة ${r.amount} USDT إلى حسابك. شكراً لك.`;
+            
           await addDoc(collection(db, "users", r.userId, "notifications"), {
             title: "تمت الموافقة على طلب التعبئة",
-            message: `تمت إضافة ${r.amount} USDT إلى حسابك`,
+            message: notificationMessage,
             read: false,
             createdAt: serverTimestamp(),
           });
@@ -698,6 +866,8 @@ export default {
         alert("خطأ أثناء الموافقة على الطلب");
       } finally {
         this.processingId = null;
+        this.closeModal();
+        this.closeApproveModal();
       }
     },
 
@@ -861,9 +1031,12 @@ export default {
       if (tab === "withdraws") this.loadWithdrawRequests();
       else if (tab === "users") this.loadUsers();
       else if (tab === "notifications") this.loadAllNotifications();
-      else if (tab === "logs") this.loadWithdrawLogs();
+      else if (tab === "withdrawLogs") this.loadWithdrawLogs();
       else if (tab === "recharges") {
         this.reloadRechargeRequests();
+      }
+      else if (tab === "rechargeLogs") { // 🔥 تحميل سجلات التعبئة عند النقر على التبويب
+        this.loadRechargeLogs();
       }
     },
     
@@ -1046,7 +1219,7 @@ export default {
     
     async loadWithdrawLogs() {
       try {
-        this.loadingLogs = true;
+        this.loadingWithdrawLogs = true;
         const snap = await getDocs(collection(db, "withdraw_logs"));
         this.withdrawLogs = snap.docs.map((d) => ({
           id: d.id,
@@ -1055,7 +1228,80 @@ export default {
       } catch (e) {
         this.withdrawLogs = [];
       } finally {
-        this.loadingLogs = false;
+        this.loadingWithdrawLogs = false;
+      }
+    },
+    
+    // 🔥 دالة جديدة لتحميل سجلات التعبئة
+    async loadRechargeLogs() {
+      try {
+        this.loadingRechargeLogs = true;
+        
+        // محاولة جلب البيانات من collection recharge_logs أولاً
+        try {
+          const rechargeLogsSnap = await getDocs(query(
+            collection(db, "recharge_logs"),
+            orderBy("createdAt", "desc")
+          ));
+          
+          this.rechargeLogs = rechargeLogsSnap.docs.map((d) => {
+            const data = d.data() || {};
+            return {
+              id: d.id,
+              type: data.type || '',
+              amount: data.amount || 0,
+              email: data.email || data.userEmail || '',
+              userEmail: data.userEmail || data.email || '',
+              reason: data.reason || '',
+              adminMessage: data.adminMessage || '',
+              createdAt: data.createdAt,
+            };
+          });
+          
+          // إذا وجدنا سجلات في recharge_logs، نوقف هنا
+          if (this.rechargeLogs.length > 0) {
+            console.log(`✅ تم تحميل ${this.rechargeLogs.length} سجل تعبئة من recharge_logs`);
+            return;
+          }
+        } catch (err) {
+          console.log("⚠ لا يوجد collection recharge_logs، جارٍ البحث في transactions...");
+        }
+        
+        // إذا لم توجد سجلات في recharge_logs، نبحث في transactions
+        try {
+          const transactionsSnap = await getDocs(query(
+            collection(db, "transactions"),
+            where("type", "==", "recharge"),
+            orderBy("createdAt", "desc")
+          ));
+          
+          this.rechargeLogs = transactionsSnap.docs.map((d) => {
+            const data = d.data() || {};
+            return {
+              id: d.id,
+              type: data.status || '',
+              status: data.status || '',
+              amount: data.amount || 0,
+              email: data.email || '',
+              userEmail: data.email || '',
+              reason: data.reason || '',
+              adminMessage: data.adminMessage || '',
+              createdAt: data.createdAt,
+            };
+          });
+          
+          console.log(`✅ تم تحميل ${this.rechargeLogs.length} سجل تعبئة من transactions`);
+          
+        } catch (err) {
+          console.error("❌ خطأ في تحميل سجلات التعبئة:", err);
+          this.rechargeLogs = [];
+        }
+        
+      } catch (e) {
+        console.error("خطأ عام في تحميل سجلات التعبئة:", e);
+        this.rechargeLogs = [];
+      } finally {
+        this.loadingRechargeLogs = false;
       }
     },
     
@@ -1252,6 +1498,22 @@ export default {
   margin: 5px 0;
   font-size: 13px;
   color: #0369a1;
+}
+
+/* 🔥 أنماط جديدة لحالات السجلات */
+.status-approved {
+  color: #28a745;
+  font-weight: bold;
+}
+
+.status-rejected {
+  color: #dc3545;
+  font-weight: bold;
+}
+
+.status-pending {
+  color: #ffc107;
+  font-weight: bold;
 }
 
 /* تحسينات التصغير والضغط */
