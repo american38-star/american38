@@ -2,9 +2,8 @@
   <div class="game-page">
 
     <h2 class="title">🐔 Chicken Road</h2>
-    <p class="sub">غامر خطوة بخطوة واربح USDT (الخطر يزداد)</p>
+    <p class="sub">غامر خطوة بخطوة – لا يوجد ربح مضمون</p>
 
-    <!-- الرصيد -->
     <div class="balance">رصيدك: {{ balance.toFixed(2) }} USDT</div>
 
     <!-- إدخال الرهان -->
@@ -12,7 +11,7 @@
       <input
         type="number"
         v-model.number="bet"
-        placeholder="مبلغ الرهان USDT"
+        placeholder="أدخل مبلغ USDT"
       />
       <button @click="startGame" :disabled="bet <= 0 || bet > balance">
         ابدأ اللعب
@@ -47,9 +46,8 @@
       </button>
     </div>
 
-    <!-- النتيجة -->
-    <div v-if="result" class="result" :class="result">
-      {{ result === 'win' ? '🎉 ربحت' : '💥 خسرت' }}
+    <div v-if="result" class="result">
+      {{ result }}
     </div>
 
   </div>
@@ -57,7 +55,7 @@
 
 <script>
 import { auth, db } from "../firebase";
-import { doc, getDoc, runTransaction } from "firebase/firestore";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 export default {
   name: "ChickenRoad",
@@ -68,16 +66,19 @@ export default {
       bet: 0,
       started: false,
       position: 0,
-      result: null,
+      result: "",
 
-      // 🔥 خسارة أعلى من الربح
+      // ⚠️ لا يوجد ربح مضمون
       steps: [
-        { multiplier: 1.2, loseChance: 0.25 },
-        { multiplier: 1.5, loseChance: 0.35 },
-        { multiplier: 2.0, loseChance: 0.45 },
-        { multiplier: 3.0, loseChance: 0.60 },
-        { multiplier: 5.0, loseChance: 0.75 },
+        { multiplier: 1.0 },  // بدون ربح
+        { multiplier: 1.2 },
+        { multiplier: 1.5 },
+        { multiplier: 2.0 },
+        { multiplier: 3.0 },
+        { multiplier: 5.0 },
       ],
+
+      winChance: 0.10, // 10% فقط
     };
   },
 
@@ -110,34 +111,28 @@ export default {
       const user = auth.currentUser;
       if (!user) return;
 
-      const userRef = doc(db, "users", user.uid);
-
       // خصم الرهان فورًا
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(userRef);
-        const bal = Number(snap.data().balance || 0);
-        if (bal < this.bet) throw "رصيد غير كافي";
-        tx.update(userRef, { balance: bal - this.bet });
+      this.balance -= this.bet;
+      await updateDoc(doc(db, "users", user.uid), {
+        balance: this.balance,
       });
 
-      this.balance -= this.bet;
       this.started = true;
       this.position = 0;
-      this.result = null;
+      this.result = "";
     },
 
     goNext() {
-      const step = this.steps[this.position];
       const roll = Math.random();
 
-      // 💥 خسارة
-      if (roll < step.loseChance) {
-        this.result = "lose";
+      // 90% خسارة
+      if (roll > this.winChance) {
+        this.result = "💥 خسرت الرهان";
         this.started = false;
         return;
       }
 
-      // تقدم
+      // تقدم خطوة
       if (this.position < this.steps.length - 1) {
         this.position++;
       }
@@ -147,18 +142,16 @@ export default {
       const user = auth.currentUser;
       if (!user) return;
 
-      const winAmount = this.currentProfit;
-      const userRef = doc(db, "users", user.uid);
+      const profit = this.currentProfit;
 
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(userRef);
-        const bal = Number(snap.data().balance || 0);
-        tx.update(userRef, { balance: bal + winAmount });
+      this.balance += profit;
+
+      await updateDoc(doc(db, "users", user.uid), {
+        balance: this.balance,
       });
 
-      this.balance += winAmount;
+      this.result = `🎉 ربحت ${profit.toFixed(2)} USDT`;
       this.started = false;
-      this.result = "win";
     },
   },
 };
@@ -169,20 +162,20 @@ export default {
   direction: rtl;
   padding: 20px;
   min-height: 100vh;
-  background: linear-gradient(#111, #333);
+  background: #111;
   color: #fff;
   text-align: center;
 }
 
-.title { font-size: 24px; }
-.sub { color: #ccc; margin-bottom: 10px; }
-.balance { margin-bottom: 15px; font-weight: bold; }
+.balance {
+  margin-bottom: 10px;
+  font-weight: bold;
+}
 
 .bet-box input {
   width: 80%;
   padding: 10px;
   border-radius: 10px;
-  border: none;
   margin-bottom: 10px;
 }
 
@@ -192,7 +185,6 @@ export default {
   border-radius: 12px;
   background: #0d6efd;
   color: white;
-  border: none;
 }
 
 .road {
@@ -202,29 +194,37 @@ export default {
 }
 
 .step {
-  width: 18%;
-  background: #222;
+  width: 15%;
+  background: #333;
   border-radius: 12px;
   padding: 10px;
 }
 
-.step.active { background: #0d6efd; }
-.chicken { font-size: 28px; }
+.step.active {
+  background: #0d6efd;
+}
+
+.chicken {
+  font-size: 28px;
+}
 
 .controls button {
   width: 45%;
   padding: 12px;
   border-radius: 12px;
-  border: none;
   margin: 5px;
 }
 
-.forward { background: #28a745; color: white; }
-.cashout { background: #ffc107; color: black; }
+.forward {
+  background: #28a745;
+}
+
+.cashout {
+  background: #ffc107;
+}
 
 .result {
   margin-top: 20px;
-  font-size: 22px;
-  font-weight: bold;
+  font-size: 20px;
 }
 </style>
