@@ -139,10 +139,6 @@
               <button class="btn black" type="button" @click="toggleBlockUser(u)">
                 {{ u.blocked ? 'إلغاء الحظر' : 'حظر' }}
               </button>
-              <!-- زر التفاصيل -->
-              <button class="btn purple" type="button" @click="showUserDetails(u)">
-                تفاصيل
-              </button>
               <button class="btn ghost" type="button" @click="viewUserNotifications(u)">
                 الإشعارات ({{ u.notificationsCount || 0 }})
               </button>
@@ -322,48 +318,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Modal تفاصيل فريق المستخدم -->
-    <div v-if="showUserDetailsModal" class="modal-backdrop" @click.self="closeUserDetailsModal">
-      <div class="modal">
-        <h3>تفاصيل فريق: {{ userDetailsData.email || '—' }}</h3>
-        
-        <div v-if="loadingUserDetails" class="loading">⏳ جاري حساب تفاصيل الفريق...</div>
-        <div v-else>
-          <div class="user-details-content">
-            <div class="detail-row">
-              <span class="detail-label">البريد الإلكتروني:</span>
-              <span class="detail-value">{{ userDetailsData.email || '—' }}</span>
-            </div>
-            
-            <div class="detail-row">
-              <span class="detail-label">كود الدعوة:</span>
-              <span class="detail-value">{{ userDetailsData.inviteCode || 'غير محدد' }}</span>
-            </div>
-            
-            <div class="detail-row highlight">
-              <span class="detail-label">عدد الإحالات:</span>
-              <span class="detail-value big-number">{{ userTeamStats.referralsCount || 0 }} مستخدم</span>
-            </div>
-            
-            <div class="detail-row highlight">
-              <span class="detail-label">شحن الفريق:</span>
-              <span class="detail-value big-number">{{ userTeamStats.teamRecharge || 0 }} USDT</span>
-            </div>
-            
-            <div v-if="userTeamStats.referralsCount > 0" class="info-box">
-              <p>📊 <strong>تفاصيل الإحالات:</strong></p>
-              <p>• عدد المستخدمين الذين دعاهم: {{ userTeamStats.referralsCount }}</p>
-              <p>• إجمالي رصيد فريقهم: {{ userTeamStats.teamRecharge }} USDT</p>
-            </div>
-          </div>
-          
-          <div class="modal-actions">
-            <button class="btn ghost" type="button" @click="closeUserDetailsModal">إغلاق</button>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -446,15 +400,6 @@ export default {
       approveMessage: "",
       approveError: "",
       approveType: "", // 'recharge' أو 'withdraw'
-
-      // بيانات لعرض تفاصيل الفريق
-      showUserDetailsModal: false,
-      userDetailsData: {},
-      userTeamStats: {
-        referralsCount: 0,
-        teamRecharge: 0
-      },
-      loadingUserDetails: false
     };
   },
   computed: {
@@ -608,111 +553,7 @@ export default {
     }
   },
   methods: {
-    // 🔥 دالة لعرض تفاصيل الفريق للمستخدم (مصححة)
-    async showUserDetails(user) {
-      this.userDetailsData = user;
-      this.showUserDetailsModal = true;
-      this.loadingUserDetails = true;
-      
-      try {
-        console.log('🔍 بدء حساب تفاصيل الفريق للمستخدم:', user.id, user.email);
-        
-        // 1️⃣ الحصول على بيانات المستخدم الكاملة من Firestore
-        const userDoc = await getDoc(doc(db, "users", user.id));
-        if (!userDoc.exists()) {
-          console.error('❌ المستخدم غير موجود في Firestore');
-          this.userTeamStats = { referralsCount: 0, teamRecharge: 0 };
-          return;
-        }
-        
-        const fullUserData = userDoc.data();
-        console.log('📄 بيانات المستخدم الكاملة:', fullUserData);
-        
-        // تحديث بيانات المستخدم بالتفاصيل الكاملة
-        this.userDetailsData = {
-          ...user,
-          ...fullUserData
-        };
-        
-        // 2️⃣ حساب عدد الإحالات (المستخدمين الذين دعاهم)
-        // الطريقة الأولى: البحث بالمستخدمين الذين invitedBy = userId هذا
-        const referralsQuery1 = query(
-          collection(db, "users"),
-          where("invitedBy", "==", user.id)
-        );
-        
-        // الطريقة الثانية: إذا كان لديه inviteCode، نبحث بالمستخدمين الذين invitedBy = inviteCode
-        let referralsQuery2 = null;
-        if (fullUserData.inviteCode) {
-          referralsQuery2 = query(
-            collection(db, "users"),
-            where("invitedBy", "==", fullUserData.inviteCode)
-          );
-        }
-        
-        let referralsCount = 0;
-        let teamRechargeTotal = 0;
-        
-        // تنفيذ البحث الأول
-        try {
-          const snapshot1 = await getDocs(referralsQuery1);
-          snapshot1.forEach((doc) => {
-            referralsCount++;
-            const data = doc.data();
-            teamRechargeTotal += Number(data.balance || 0);
-          });
-          console.log(`✅ البحث الأول: ${snapshot1.size} إحالة`);
-        } catch (error) {
-          console.error('خطأ في البحث الأول:', error);
-        }
-        
-        // تنفيذ البحث الثاني إذا كان هناك inviteCode
-        if (referralsQuery2) {
-          try {
-            const snapshot2 = await getDocs(referralsQuery2);
-            snapshot2.forEach((doc) => {
-              referralsCount++;
-              const data = doc.data();
-              teamRechargeTotal += Number(data.balance || 0);
-            });
-            console.log(`✅ البحث الثاني: ${snapshot2.size} إحالة`);
-          } catch (error) {
-            console.error('خطأ في البحث الثاني:', error);
-          }
-        }
-        
-        // 3️⃣ تخزين النتائج
-        this.userTeamStats = {
-          referralsCount: referralsCount,
-          teamRecharge: teamRechargeTotal.toFixed(2)
-        };
-        
-        console.log('🎯 النتائج النهائية:', this.userTeamStats);
-        
-      } catch (error) {
-        console.error("🔥 خطأ في حساب تفاصيل الفريق:", error);
-        alert("حدث خطأ أثناء حساب تفاصيل الفريق");
-        this.userTeamStats = {
-          referralsCount: 0,
-          teamRecharge: 0
-        };
-      } finally {
-        this.loadingUserDetails = false;
-      }
-    },
-    
-    // دالة لإغلاق نافذة تفاصيل الفريق
-    closeUserDetailsModal() {
-      this.showUserDetailsModal = false;
-      this.userDetailsData = {};
-      this.userTeamStats = {
-        referralsCount: 0,
-        teamRecharge: 0
-      };
-      this.loadingUserDetails = false;
-    },
-
-    // 🔥 فتح موذج الموافقة
+    // فتح موذج الموافقة
     openApproveModal(data, type) {
       this.approveModalData = data;
       this.approveType = type;
@@ -722,7 +563,7 @@ export default {
       this.showModal = false; // إغلاق الموذج القديم
     },
 
-    // 🔥 إغلاق موذج الموافقة
+    // إغلاق موذج الموافقة
     closeApproveModal() {
       this.showApproveModal = false;
       this.approveModalData = {};
@@ -730,7 +571,7 @@ export default {
       this.approveError = "";
     },
 
-    // 🔥 التحقق من رسالة الموافقة
+    // التحقق من رسالة الموافقة
     validateApproveMessage() {
       if (this.approveMessage.length > 500) {
         this.approveError = "الرسالة يجب أن تكون أقل من 500 حرف";
@@ -740,7 +581,7 @@ export default {
       return true;
     },
 
-    // 🔥 تأكيد الموافقة
+    // تأكيد الموافقة
     async confirmApprove() {
       if (!this.validateApproveMessage()) return;
 
@@ -751,137 +592,17 @@ export default {
       }
     },
 
-    // 🔥 دالة للموافقة على السحب مع رسالة
-    async approveWithdrawWithMessage(req, message = "") {
-      if (!req || !req.id) return;
-      const allowed = await this.ensureAdmin();
-      if (!allowed) return alert("غير مصرح لك");
-      if (!confirm(`تأكيد الموافقة على ${req.amount} USDT؟`)) return;
-      this.processingId = req.id;
-      try {
-        // 1. تحديث رصيد المستخدم
-        if (req.userId) {
-          const userRef = doc(db, "users", req.userId);
-          const userSnap = await getDoc(userRef);
-          if (userSnap.exists()) {
-            const currentBalance = userSnap.data().balance || 0;
-            const newBalance = currentBalance - req.amount;
-            await updateDoc(userRef, { balance: Math.max(0, newBalance) });
-          }
-        }
-
-        // 2. إضافة سجل
-        await addDoc(collection(db, "withdraw_logs"), {
-          userId: req.userId || null,
-          email: req.email || null,
-          amount: req.amount || 0,
-          type: "approved",
-          adminMessage: message || "",
-          createdAt: serverTimestamp(),
-        });
-        
-        // 3. إرسال إشعار للمستخدم مع الرسالة
-        if (req.userId) {
-          const notificationMessage = message 
-            ? `تم تحويل ${req.amount} USDT. ${message}`
-            : `تم تحويل ${req.amount} USDT.`;
-            
-          await addDoc(
-            collection(db, "users", req.userId, "notifications"),
-            {
-              title: "تمت الموافقة على السحب",
-              message: notificationMessage,
-              read: false,
-              createdAt: serverTimestamp(),
-            }
-          );
-        }
-        
-        // 4. حذف الطلب من withdraw_requests
-        const r = doc(db, "withdraw_requests", req.id);
-        const ex = await getDoc(r);
-        if (ex.exists()) await deleteDoc(r);
-        
-        alert("✔ تمت الموافقة");
-        await this.loadWithdrawRequests();
-        await this.loadWithdrawLogs();
-      } catch (e) {
-        console.error("خطأ في الموافقة:", e);
-        alert("خطأ في الموافقة");
-      } finally {
-        this.processingId = null;
-        this.closeModal();
-        this.closeApproveModal();
-      }
-    },
-    
-    // 🔥 دالة للموافقة على التعبئة مع رسالة
-    async approveRechargeWithMessage(r, message = "") {
-      if (!r || !r.id) return;
-      const allowed = await this.ensureAdmin();
-      if (!allowed) return alert("غير مصرح لك");
-      if (!confirm(`تأكيد الموافقة على تعبئة ${r.amount} USDT للمستخدم ${r.userEmail || r.userId || ''}?`)) return;
-      this.processingId = r.id;
-      try {
-        // 1. تحديث حالة الطلب في payments
-        const pRef = doc(db, "payments", r.id);
-        await updateDoc(pRef, { 
-          status: "approved", 
-          processedAt: serverTimestamp(),
-          adminMessage: message || ""
-        });
-
-        // 2. إضافة سجل مع الرسالة
-        await addDoc(collection(db, "recharge_logs"), {
-          userId: r.userId || null,
-          email: r.userEmail || null,
-          amount: r.amount || 0,
-          type: "approved",
-          adminMessage: message || "",
-          createdAt: serverTimestamp(),
-        });
-
-        // 3. إرسال إشعار للمستخدم مع الرسالة
-        if (r.userId) {
-          const notificationMessage = message 
-            ? `تمت إضافة ${r.amount} USDT إلى حسابك. ${message}`
-            : `تمت إضافة ${r.amount} USDT إلى حسابك. شكراً لك.`;
-            
-          await addDoc(collection(db, "users", r.userId, "notifications"), {
-            title: "تمت الموافقة على طلب التعبئة",
-            message: notificationMessage,
-            read: false,
-            createdAt: serverTimestamp(),
-          });
-
-          // 4. تحديث رصيد المستخدم
-          const userRef = doc(db, "users", r.userId);
-          const uSnap = await getDoc(userRef);
-          const cur = uSnap.exists() ? Number(uSnap.data().balance || 0) : 0;
-          await updateDoc(userRef, { balance: cur + Number(r.amount || 0) });
-        }
-
-        alert("✔ تمت الموافقة على طلب التعبئة");
-      } catch (e) {
-        console.error("approveRecharge error:", e);
-        alert("خطأ أثناء الموافقة على الطلب");
-      } finally {
-        this.processingId = null;
-        this.closeModal();
-        this.closeApproveModal();
-      }
-    },
-
-    // 🚀 فتح موذج الرفض
+    // فتح موذج الرفض
     openRejectModal(data, type) {
       this.rejectModalData = data;
       this.rejectType = type;
       this.rejectReason = "";
       this.rejectError = "";
       this.showRejectModal = true;
+      this.showModal = false; // إغلاق الموذج القديم
     },
 
-    // 🚀 إغلاق موذج الرفض
+    // إغلاق موذج الرفض
     closeRejectModal() {
       this.showRejectModal = false;
       this.rejectModalData = {};
@@ -889,7 +610,7 @@ export default {
       this.rejectError = "";
     },
 
-    // 🚀 التحقق من سبب الرفض
+    // التحقق من سبب الرفض
     validateRejectReason() {
       if (!this.rejectReason || this.rejectReason.trim() === "") {
         this.rejectError = "يجب إدخال سبب الرفض";
@@ -903,7 +624,7 @@ export default {
       return true;
     },
 
-    // 🚀 تأكيد الرفض
+    // تأكيد الرفض
     async confirmReject() {
       if (!this.validateRejectReason()) return;
 
@@ -911,109 +632,6 @@ export default {
         await this.rejectRecharge(this.rejectModalData, this.rejectReason);
       } else if (this.rejectType === 'withdraw') {
         await this.rejectWithdraw(this.rejectModalData, this.rejectReason);
-      }
-    },
-
-    // 🚀 رفض السحب مع سبب
-    async rejectWithdraw(req, reason) {
-      if (!req || !req.id) return;
-      
-      const allowed = await this.ensureAdmin();
-      if (!allowed) return alert("غير مصرح");
-      
-      this.processingId = req.id;
-      try {
-        // 1. إعادة الرصيد إذا كان هناك oldBalance
-        if (req.userId && typeof req.oldBalance === "number") {
-          try {
-            await updateDoc(doc(db, "users", req.userId), {
-              balance: req.oldBalance,
-            });
-          } catch { }
-        }
-
-        // 2. إضافة سجل الرفض
-        await addDoc(collection(db, "withdraw_logs"), {
-          userId: req.userId || null,
-          email: req.email || null,
-          amount: req.amount || 0,
-          type: "rejected",
-          reason: reason,
-          createdAt: serverTimestamp(),
-        });
-
-        // 3. إرسال إشعار للمستخدم مع السبب
-        if (req.userId) {
-          await addDoc(
-            collection(db, "users", req.userId, "notifications"),
-            {
-              title: "تم رفض طلب السحب",
-              message: `تم رفض سحب ${req.amount} USDT. السبب: ${reason}`,
-              read: false,
-              createdAt: serverTimestamp(),
-            }
-          );
-        }
-
-        // 4. حذف الطلب
-        await deleteDoc(doc(db, "withdraw_requests", req.id));
-        
-        alert("❌ تم رفض طلب السحب");
-        await this.loadWithdrawRequests();
-        await this.loadWithdrawLogs();
-      } catch (e) {
-        console.error("خطأ في رفض الطلب:", e);
-        alert("خطأ في رفض الطلب");
-      } finally {
-        this.processingId = null;
-        this.closeRejectModal();
-      }
-    },
-    
-    // 🚀 رفض التعبئة مع سبب
-    async rejectRecharge(r, reason) {
-      if (!r || !r.id) return;
-      
-      const allowed = await this.ensureAdmin();
-      if (!allowed) return alert("غير مصرح لك");
-      
-      this.processingId = r.id;
-      try {
-        // 1. تحديث حالة الطلب في payments
-        const pRef = doc(db, "payments", r.id);
-        await updateDoc(pRef, { 
-          status: "rejected", 
-          processedAt: serverTimestamp(),
-          rejectReason: reason
-        });
-
-        // 2. إضافة سجل الرفض
-        await addDoc(collection(db, "recharge_logs"), {
-          userId: r.userId || null,
-          email: r.userEmail || null,
-          amount: r.amount || 0,
-          type: "rejected",
-          reason: reason,
-          createdAt: serverTimestamp(),
-        });
-
-        // 3. إرسال إشعار للمستخدم مع السبب
-        if (r.userId) {
-          await addDoc(collection(db, "users", r.userId, "notifications"), {
-            title: "تم رفض طلب التعبئة",
-            message: `تم رفض طلب تعبئة ${r.amount} USDT. السبب: ${reason}`,
-            read: false,
-            createdAt: serverTimestamp(),
-          });
-        }
-
-        alert("❌ تم رفض طلب التعبئة");
-      } catch (e) {
-        console.error("rejectRecharge error:", e);
-        alert("حدث خطأ أثناء رفض الطلب");
-      } finally {
-        this.processingId = null;
-        this.closeRejectModal();
       }
     },
 
@@ -1053,8 +671,6 @@ export default {
             balance: data.balance ?? 0,
             blocked: data.blocked ?? false,
             notificationsCount: data.notificationsCount ?? 0,
-            inviteCode: data.inviteCode || null,
-            invitedBy: data.invitedBy || null
           };
         });
       } catch (e) {
@@ -1182,6 +798,274 @@ export default {
         return false;
       } catch (e) {
         return false;
+      }
+    },
+    
+    // ✅ دالة تحديث المعاملة في collection transactions
+    async updateTransactionDirectly(transactionId, updateData) {
+      try {
+        const transactionRef = doc(db, "transactions", transactionId);
+        await updateDoc(transactionRef, {
+          ...updateData,
+          updatedAt: serverTimestamp()
+        });
+        console.log("✅ تم تحديث المعاملة:", transactionId);
+        return true;
+      } catch (error) {
+        console.error("❌ خطأ في تحديث المعاملة:", error);
+        return false;
+      }
+    },
+
+    // ✅ دالة إنشاء معاملة جديدة
+    async createTransactionForUser(userId, email, type, amount, status, reason = "", adminMessage = "") {
+      try {
+        const transactionData = {
+          transactionId: "TRX" + Date.now(),
+          userId: userId,
+          email: email,
+          type: type, // 'withdraw' أو 'recharge'
+          amount: amount,
+          currency: "USDT",
+          status: status,
+          adminAction: status === "approved" ? "approved" : status === "rejected" ? "rejected" : "",
+          userMessage: status === "approved" ? "تمت الموافقة على طلبك" : 
+                      status === "rejected" ? "تم رفض طلبك" : "",
+          reason: reason,
+          adminMessage: adminMessage,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          [status === "approved" ? "approvedAt" : status === "rejected" ? "rejectedAt" : ""]: serverTimestamp()
+        };
+
+        await addDoc(collection(db, "transactions"), transactionData);
+        console.log("✅ تم إنشاء معاملة جديدة للمستخدم:", userId);
+        return true;
+      } catch (error) {
+        console.error("❌ خطأ في إنشاء المعاملة:", error);
+        return false;
+      }
+    },
+
+    // دالة للموافقة على السحب مع رسالة
+    async approveWithdrawWithMessage(req, message = "") {
+      if (!req || !req.id) return;
+      const allowed = await this.ensureAdmin();
+      if (!allowed) return alert("غير مصرح لك");
+      if (!confirm(`تأكيد الموافقة على ${req.amount} USDT؟`)) return;
+      this.processingId = req.id;
+      try {
+        // 1. تحديث أو إنشاء المعاملة في transactions مع الرسالة
+        if (req.userId) {
+          await this.createTransactionForUser(
+            req.userId,
+            req.email,
+            "withdraw",
+            req.amount,
+            "approved",
+            "",
+            message || "تمت الموافقة على طلب السحب"
+          );
+        }
+
+        // 2. إضافة سجل
+        await addDoc(collection(db, "withdraw_logs"), {
+          userId: req.userId || null,
+          email: req.email || null,
+          amount: req.amount || 0,
+          type: "approved",
+          adminMessage: message || "",
+          createdAt: serverTimestamp(),
+        });
+        
+        // 3. إرسال إشعار للمستخدم مع الرسالة
+        if (req.userId) {
+          const notificationMessage = message 
+            ? `تم تحويل ${req.amount} USDT. ${message}`
+            : `تم تحويل ${req.amount} USDT.`;
+            
+          await addDoc(
+            collection(db, "users", req.userId, "notifications"),
+            {
+              title: "تمت الموافقة على السحب",
+              message: notificationMessage,
+              read: false,
+              createdAt: serverTimestamp(),
+            }
+          );
+        }
+        
+        // 4. حذف الطلب من withdraw_requests
+        const r = doc(db, "withdraw_requests", req.id);
+        const ex = await getDoc(r);
+        if (ex.exists()) await deleteDoc(r);
+        
+        alert("✔ تمت الموافقة");
+        await this.loadWithdrawRequests();
+        await this.loadWithdrawLogs();
+      } catch (e) {
+        console.error("خطأ في الموافقة:", e);
+        alert("خطأ في الموافقة");
+      } finally {
+        this.processingId = null;
+        this.closeModal();
+        this.closeApproveModal();
+      }
+    },
+    
+    // دالة للموافقة على التعبئة مع رسالة
+    async approveRechargeWithMessage(r, message = "") {
+      if (!r || !r.id) return;
+      const allowed = await this.ensureAdmin();
+      if (!allowed) return alert("غير مصرح لك");
+      if (!confirm(`تأكيد الموافقة على تعبئة ${r.amount} USDT للمستخدم ${r.userEmail || r.userId || ''}?`)) return;
+      this.processingId = r.id;
+      try {
+        // 1. تحديث حالة الطلب في payments
+        const pRef = doc(db, "payments", r.id);
+        await updateDoc(pRef, { 
+          status: "approved", 
+          processedAt: serverTimestamp(),
+          adminMessage: message || ""
+        });
+
+        // 2. إنشاء معاملة في transactions مع الرسالة
+        if (r.userId) {
+          await this.createTransactionForUser(
+            r.userId,
+            r.userEmail,
+            "recharge",
+            r.amount,
+            "approved",
+            "",
+            message || "تمت الموافقة على طلب التعبئة"
+          );
+        }
+
+        // 3. إضافة سجل مع الرسالة
+        await addDoc(collection(db, "recharge_logs"), {
+          userId: r.userId || null,
+          email: r.userEmail || null,
+          amount: r.amount || 0,
+          type: "approved",
+          adminMessage: message || "",
+          createdAt: serverTimestamp(),
+        });
+
+        // 4. إرسال إشعار للمستخدم مع الرسالة
+        if (r.userId) {
+          const notificationMessage = message 
+            ? `تمت إضافة ${r.amount} USDT إلى حسابك. ${message}`
+            : `تمت إضافة ${r.amount} USDT إلى حسابك. شكراً لك.`;
+            
+          await addDoc(collection(db, "users", r.userId, "notifications"), {
+            title: "تمت الموافقة على طلب التعبئة",
+            message: notificationMessage,
+            read: false,
+            createdAt: serverTimestamp(),
+          });
+
+          // 5. تحديث رصيد المستخدم
+          try {
+            const userRef = doc(db, "users", r.userId);
+            const uSnap = await getDoc(userRef);
+            const cur = uSnap.exists() ? Number(uSnap.data().balance || 0) : 0;
+            await updateDoc(userRef, { balance: cur + Number(r.amount || 0) });
+
+            // 6. حساب أرباح الإحالة
+            await this.calculateAndAddReferralEarnings(r.userId, r.amount, r.id);
+
+          } catch (err) {
+            console.warn("failed to update user balance after recharge approval:", err);
+          }
+        }
+
+        alert("✔ تمت الموافقة على طلب التعبئة وتم إضافة أرباح الإحالة");
+      } catch (e) {
+        console.error("approveRecharge error:", e);
+        alert("خطأ أثناء الموافقة على الطلب");
+      } finally {
+        this.processingId = null;
+        this.closeModal();
+        this.closeApproveModal();
+      }
+    },
+
+    // ✅ دالة لرفض السحب مع سبب
+    async rejectWithdraw(req, reason = "") {
+      if (!req || !req.id) return;
+      
+      // إذا لم يتم إرسال السبب، نفتح الموذج
+      if (!reason) {
+        this.openRejectModal(req, 'withdraw');
+        return;
+      }
+      
+      const allowed = await this.ensureAdmin();
+      if (!allowed) return alert("غير مصرح");
+      if (!confirm(`تأكيد رفض سحب ${req.amount}؟`)) return;
+      this.processingId = req.id;
+      try {
+        // 1. إنشاء معاملة مرفوضة في transactions
+        if (req.userId) {
+          await this.createTransactionForUser(
+            req.userId,
+            req.email,
+            "withdraw",
+            req.amount,
+            "rejected",
+            reason,
+            "تم رفض طلب السحب"
+          );
+        }
+
+        // 2. إعادة الرصيد إذا كان هناك oldBalance
+        if (req.userId && typeof req.oldBalance === "number") {
+          try {
+            await updateDoc(doc(db, "users", req.userId), {
+              balance: req.oldBalance,
+            });
+          } catch { }
+        }
+
+        // 3. إضافة سجل الرفض
+        await addDoc(collection(db, "withdraw_logs"), {
+          userId: req.userId || null,
+          email: req.email || null,
+          amount: req.amount || 0,
+          type: "rejected",
+          reason: reason,
+          createdAt: serverTimestamp(),
+        });
+
+        // 4. إرسال إشعار للمستخدم مع السبب
+        if (req.userId) {
+          await addDoc(
+            collection(db, "users", req.userId, "notifications"),
+            {
+              title: "تم رفض طلب السحب",
+              message: `تم رفض سحب ${req.amount} USDT. السبب: ${reason}`,
+              read: false,
+              createdAt: serverTimestamp(),
+            }
+          );
+        }
+
+        // 5. حذف الطلب
+        const r = doc(db, "withdraw_requests", req.id);
+        const ex = await getDoc(r);
+        if (ex.exists()) await deleteDoc(r);
+        
+        alert("❌ تم الرفض");
+        await this.loadWithdrawRequests();
+        await this.loadWithdrawLogs();
+      } catch (e) {
+        console.error("خطأ في رفض الطلب:", e);
+        alert("خطأ في رفض الطلب");
+      } finally {
+        this.processingId = null;
+        this.closeModal();
+        this.closeRejectModal();
       }
     },
     
@@ -1395,6 +1279,254 @@ export default {
       this.showModal = true;
     },
     
+    async markAllRechargeNotificationsRead() {
+      alert("تم وضع إشعارات التعبئة كمقروءة (محلياً).");
+    },
+
+    // ✅ دالة لحساب وإضافة أرباح الإحالة تلقائياً
+    async calculateAndAddReferralEarnings(userId, amount, rechargeId) {
+      try {
+        console.log(`🔗 بدء حساب أرباح الإحالة للمستخدم: ${userId}, المبلغ: ${amount}`);
+        
+        const userRef = doc(db, "users", userId);
+        const userSnap = await getDoc(userRef);
+        
+        if (!userSnap.exists()) {
+          console.log("❌ المستخدم غير موجود");
+          return;
+        }
+        
+        const userData = userSnap.data();
+        const userEmail = userData.email || "";
+        
+        // نسبة العمولات لكل مستوى
+        const commissionRates = {
+          level1: 5,   // 5% للمستوى الأول (invitedBy)
+          level2: 2,   // 2% للمستوى الثاني (level2)
+          level3: 1,   // 1% للمستوى الثالث (level3)
+        };
+        
+        // المستوى الأول: invitedBy
+        if (userData.invitedBy) {
+          try {
+            const level1Ref = doc(db, "users", userData.invitedBy);
+            const level1Snap = await getDoc(level1Ref);
+            
+            if (level1Snap.exists()) {
+              const level1Data = level1Snap.data();
+              const level1Amount = (amount * commissionRates.level1) / 100;
+              const newBalance = (level1Data.balance || 0) + level1Amount;
+              
+              // تحديث رصيد المحيل بالمستوى الأول
+              await updateDoc(level1Ref, { balance: newBalance });
+              
+              // إنشاء معاملة الإحالة للمستوى الأول
+              await addDoc(collection(db, "transactions"), {
+                transactionId: "REF" + Date.now() + Math.random().toString(36).substr(2, 5),
+                userId: userData.invitedBy,
+                email: level1Data.email || "",
+                type: "referral_commission",
+                amount: level1Amount,
+                currency: "USDT",
+                status: "completed",
+                details: {
+                  fromUserId: userId,
+                  fromEmail: userEmail,
+                  level: 1,
+                  percentage: commissionRates.level1,
+                  baseAmount: amount,
+                  rechargeId: rechargeId,
+                },
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              });
+              
+              // إرسال إشعار للمحيل بالمستوى الأول
+              await addDoc(collection(db, "users", userData.invitedBy, "notifications"), {
+                title: "💰 عمولة إحالة جديدة",
+                message: `لقد حصلت على عمولة إحالة بقيمة ${level1Amount} USDT (${commissionRates.level1}%) من ${userEmail}`,
+                read: false,
+                createdAt: serverTimestamp(),
+              });
+              
+              console.log(`✅ إضافة ${level1Amount} USDT (${commissionRates.level1}%) للمستوى الأول: ${level1Data.email}`);
+            }
+          } catch (error) {
+            console.error("❌ خطأ في حساب أرباح المستوى الأول:", error);
+          }
+        }
+        
+        // المستوى الثاني: level2
+        if (userData.level2) {
+          try {
+            const level2Ref = doc(db, "users", userData.level2);
+            const level2Snap = await getDoc(level2Ref);
+            
+            if (level2Snap.exists()) {
+              const level2Data = level2Snap.data();
+              const level2Amount = (amount * commissionRates.level2) / 100;
+              const newBalance = (level2Data.balance || 0) + level2Amount;
+              
+              // تحديث رصيد المحيل بالمستوى الثاني
+              await updateDoc(level2Ref, { balance: newBalance });
+              
+              // إنشاء معاملة الإحالة للمستوى الثاني
+              await addDoc(collection(db, "transactions"), {
+                transactionId: "REF" + Date.now() + Math.random().toString(36).substr(2, 6),
+                userId: userData.level2,
+                email: level2Data.email || "",
+                type: "referral_commission",
+                amount: level2Amount,
+                currency: "USDT",
+                status: "completed",
+                details: {
+                  fromUserId: userId,
+                  fromEmail: userEmail,
+                  level: 2,
+                  percentage: commissionRates.level2,
+                  baseAmount: amount,
+                  rechargeId: rechargeId,
+                },
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              });
+              
+              // إرسال إشعار للمحيل بالمستوى الثاني
+              await addDoc(collection(db, "users", userData.level2, "notifications"), {
+                title: "💰 عمولة إحالة جديدة",
+                message: `لقد حصلت على عمولة إحالة بقيمة ${level2Amount} USDT (${commissionRates.level2}%) من ${userEmail}`,
+                read: false,
+                createdAt: serverTimestamp(),
+              });
+              
+              console.log(`✅ إضافة ${level2Amount} USDT (${commissionRates.level2}%) للمستوى الثاني: ${level2Data.email}`);
+            }
+          } catch (error) {
+            console.error("❌ خطأ في حساب أرباح المستوى الثاني:", error);
+          }
+        }
+        
+        // المستوى الثالث: level3
+        if (userData.level3) {
+          try {
+            const level3Ref = doc(db, "users", userData.level3);
+            const level3Snap = await getDoc(level3Ref);
+            
+            if (level3Snap.exists()) {
+              const level3Data = level3Snap.data();
+              const level3Amount = (amount * commissionRates.level3) / 100;
+              const newBalance = (level3Data.balance || 0) + level3Amount;
+              
+              // تحديث رصيد المحيل بالمستوى الثالث
+              await updateDoc(level3Ref, { balance: newBalance });
+              
+              // إنشاء معاملة الإحالة للمستوى الثالث
+              await addDoc(collection(db, "transactions"), {
+                transactionId: "REF" + Date.now() + Math.random().toString(36).substr(2, 7),
+                userId: userData.level3,
+                email: level3Data.email || "",
+                type: "referral_commission",
+                amount: level3Amount,
+                currency: "USDT",
+                status: "completed",
+                details: {
+                  fromUserId: userId,
+                  fromEmail: userEmail,
+                  level: 3,
+                  percentage: commissionRates.level3,
+                  baseAmount: amount,
+                  rechargeId: rechargeId,
+                },
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              });
+              
+              // إرسال إشعار للمحيل بالمستوى الثالث
+              await addDoc(collection(db, "users", userData.level3, "notifications"), {
+                title: "💰 عمولة إحالة جديدة",
+                message: `لقد حصلت على عمولة إحالة بقيمة ${level3Amount} USDT (${commissionRates.level3}%) من ${userEmail}`,
+                read: false,
+                createdAt: serverTimestamp(),
+              });
+              
+              console.log(`✅ إضافة ${level3Amount} USDT (${commissionRates.level3}%) للمستوى الثالث: ${level3Data.email}`);
+            }
+          } catch (error) {
+            console.error("❌ خطأ في حساب أرباح المستوى الثالث:", error);
+          }
+        }
+        
+        console.log(`🎉 تم إكمال حساب أرباح الإحالة بنجاح`);
+        
+      } catch (error) {
+        console.error("❌ خطأ في حساب أرباح الإحالة:", error);
+        throw error;
+      }
+    },
+
+    // ✅ دالة لرفض التعبئة مع سبب
+    async rejectRecharge(r, reason = "") {
+      if (!r || !r.id) return;
+      
+      // إذا لم يتم إرسال السبب، نفتح الموذج
+      if (!reason) {
+        this.openRejectModal(r, 'recharge');
+        return;
+      }
+      
+      const allowed = await this.ensureAdmin();
+      if (!allowed) return alert("غير مصرح لك");
+      if (!confirm(`تأكيد رفض طلب التعبئة ${r.amount} USDT للمستخدم ${r.userEmail || r.userId || ''}?`)) return;
+      this.processingId = r.id;
+      try {
+        // 1. تحديث حالة الطلب في payments
+        const pRef = doc(db, "payments", r.id);
+        await updateDoc(pRef, { status: "rejected", processedAt: serverTimestamp() });
+
+        // 2. إنشاء معاملة مرفوضة في transactions
+        if (r.userId) {
+          await this.createTransactionForUser(
+            r.userId,
+            r.userEmail,
+            "recharge",
+            r.amount,
+            "rejected",
+            reason,
+            "تم رفض طلب التعبئة"
+          );
+        }
+
+        // 3. إضافة سجل الرفض
+        await addDoc(collection(db, "recharge_logs"), {
+          userId: r.userId || null,
+          email: r.userEmail || null,
+          amount: r.amount || 0,
+          type: "rejected",
+          reason: reason,
+          createdAt: serverTimestamp(),
+        });
+
+        // 4. إرسال إشعار للمستخدم مع السبب
+        if (r.userId) {
+          await addDoc(collection(db, "users", r.userId, "notifications"), {
+            title: "تم رفض طلب التعبئة",
+            message: `تم رفض طلب تعبئة ${r.amount} USDT. السبب: ${reason}`,
+            read: false,
+            createdAt: serverTimestamp(),
+          });
+        }
+
+        alert("❌ تم رفض طلب التعبئة");
+      } catch (e) {
+        console.error("rejectRecharge error:", e);
+        alert("حدث خطأ أثناء رفض الطلب");
+      } finally {
+        this.processingId = null;
+        this.closeModal();
+        this.closeRejectModal();
+      }
+    },
+    
     async deleteRecharge(r) {
       if (!r || !r.id) return;
       const allowed = await this.ensureAdmin();
@@ -1419,104 +1551,21 @@ export default {
       }
     },
     
-    async markAllRechargeNotificationsRead() {
-      alert("تم وضع إشعارات التعبئة كمقروءة (محلياً).");
-    },
-    
     detachRechargeListener() {
       if (this.rechargeUnsubscribe) {
         try { this.rechargeUnsubscribe(); } catch (e) {}
         this.rechargeUnsubscribe = null;
       }
     },
+    
+    async markAllRechargeNotificationsReadServerSide() {
+      alert("ميزة وضع الإشعارات كمقروءة تحتاج تنفيذ على حسب تصميم قاعدة البيانات.");
+    },
   },
 };
 </script>
 
 <style scoped>
-/* إضافة لون جديد لزر التفاصيل */
-.purple {
-  background: linear-gradient(90deg, #8B5CF6, #7C3AED);
-  color: white;
-}
-
-.purple:hover {
-  background: linear-gradient(90deg, #7C3AED, #6D28D9);
-}
-
-/* تنسيق نافذة تفاصيل الفريق */
-.user-details-content {
-  padding: 15px 0;
-}
-
-.detail-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.detail-row:last-child {
-  border-bottom: none;
-}
-
-.detail-row.highlight {
-  background-color: #f8f9ff;
-  padding: 12px;
-  border-radius: 8px;
-  margin: 10px 0;
-  border: 1px solid #e0e7ff;
-}
-
-.detail-label {
-  font-weight: 600;
-  color: #333;
-  font-size: 14px;
-}
-
-.detail-value {
-  font-weight: 600;
-  color: #0b5cff;
-  font-size: 14px;
-}
-
-.detail-value.big-number {
-  font-size: 18px;
-  color: #10b981;
-  font-weight: bold;
-}
-
-.info-box {
-  background: #f0f9ff;
-  padding: 15px;
-  border-radius: 8px;
-  margin-top: 15px;
-  border: 1px solid #e0f2fe;
-}
-
-.info-box p {
-  margin: 5px 0;
-  font-size: 13px;
-  color: #0369a1;
-}
-
-/* 🔥 أنماط جديدة لحالات السجلات */
-.status-approved {
-  color: #28a745;
-  font-weight: bold;
-}
-
-.status-rejected {
-  color: #dc3545;
-  font-weight: bold;
-}
-
-.status-pending {
-  color: #ffc107;
-  font-weight: bold;
-}
-
 /* تحسينات التصغير والضغط */
 .header-row {
   display: flex;
@@ -1738,31 +1787,46 @@ export default {
   padding: 12px;
   border-radius: 8px;
   width: 90%;
-  max-width: 500px;
+  max-width: 400px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
   max-height: 80vh;
   overflow-y: auto;
 }
 
 .modal h3 {
-  font-size: 16px;
-  margin: 0 0 15px 0;
+  font-size: 14px;
+  margin: 0 0 10px 0;
   color: #333;
   font-weight: 600;
-  text-align: center;
 }
 
 .modal p {
   margin: 5px 0;
-  font-size: 13px;
+  font-size: 11px;
   line-height: 1.3;
 }
 
 .modal-actions {
   display: flex;
   gap: 8px;
-  margin-top: 15px;
-  justify-content: center;
+  margin-top: 10px;
+  justify-content: flex-end;
+}
+
+/* 🔥 أنماط جديدة لحالات السجلات */
+.status-approved {
+  color: #28a745;
+  font-weight: bold;
+}
+
+.status-rejected {
+  color: #dc3545;
+  font-weight: bold;
+}
+
+.status-pending {
+  color: #ffc107;
+  font-weight: bold;
 }
 
 /* تحسينات للعرض على الشاشات الصغيرة */
