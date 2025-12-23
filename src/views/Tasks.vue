@@ -1,146 +1,207 @@
 <template>
-  <div class="game-card">
-    <h3>🎲 الحظ المحدود</h3>
-    <p>فرصة ربح ×2 (نسبة فوز 40%)</p>
+  <div class="game-page">
 
-    <input
-      type="number"
-      v-model.number="bet"
-      placeholder="أدخل المبلغ USDT"
-    />
+    <h2 class="title">🐔 Chicken Road</h2>
+    <p class="sub">غامر وتقدم خطوة بخطوة واربح USDT</p>
 
-    <button @click="play" :disabled="loading">
-      {{ loading ? "جاري اللعب..." : "جرّب حظك" }}
-    </button>
+    <!-- إدخال الرهان -->
+    <div v-if="!started" class="bet-box">
+      <input
+        type="number"
+        v-model.number="bet"
+        placeholder="أدخل مبلغ USDT"
+      />
+      <button @click="startGame" :disabled="bet <= 0">
+        ابدأ اللعب
+      </button>
+    </div>
 
-    <p v-if="message" :class="resultClass">{{ message }}</p>
+    <!-- ساحة اللعب -->
+    <div v-if="started" class="road">
+
+      <div
+        v-for="(step, i) in steps"
+        :key="i"
+        class="step"
+        :class="{ active: i === position }"
+      >
+        <div class="multiplier">x{{ step.multiplier }}</div>
+        <div v-if="i === position" class="chicken">🐔</div>
+      </div>
+
+    </div>
+
+    <!-- التحكم -->
+    <div v-if="started" class="controls">
+      <div class="profit">
+        الربح الحالي: {{ currentProfit.toFixed(2) }} USDT
+      </div>
+
+      <button class="forward" @click="goNext">
+        إلى الأمام
+      </button>
+
+      <button class="cashout" @click="cashOut">
+        سحب الأرباح
+      </button>
+    </div>
+
+    <!-- النتيجة -->
+    <div v-if="result" class="result" :class="result">
+      {{ result === 'win' ? '🎉 ربحت!' : '💥 خسرت!' }}
+    </div>
+
   </div>
 </template>
 
 <script>
-import { auth, db } from "../firebase";
-import {
-  doc,
-  getDoc,
-  runTransaction,
-  addDoc,
-  collection,
-  serverTimestamp
-} from "firebase/firestore";
-
 export default {
-  name: "LimitedLuck",
+  name: "ChickenRoad",
 
   data() {
     return {
       bet: 0,
-      loading: false,
-      message: "",
-      resultClass: ""
+      started: false,
+      position: 0,
+      result: null,
+
+      steps: [
+        { multiplier: 1.2, loseChance: 0.1 },
+        { multiplier: 1.5, loseChance: 0.15 },
+        { multiplier: 2.0, loseChance: 0.2 },
+        { multiplier: 3.2, loseChance: 0.3 },
+        { multiplier: 5.0, loseChance: 0.45 },
+      ],
     };
   },
 
+  computed: {
+    currentProfit() {
+      if (!this.started) return 0;
+      return this.bet * this.steps[this.position].multiplier;
+    },
+  },
+
   methods: {
-    async play() {
-      if (this.bet <= 0) {
-        this.message = "❌ أدخل مبلغ صحيح";
-        this.resultClass = "lose";
+    startGame() {
+      this.started = true;
+      this.position = 0;
+      this.result = null;
+    },
+
+    goNext() {
+      const step = this.steps[this.position];
+      const roll = Math.random();
+
+      if (roll < step.loseChance) {
+        this.result = "lose";
+        this.started = false;
         return;
       }
 
-      const user = auth.currentUser;
-      if (!user) return;
-
-      this.loading = true;
-      this.message = "";
-
-      const userRef = doc(db, "users", user.uid);
-
-      try {
-        await runTransaction(db, async (tx) => {
-          const snap = await tx.get(userRef);
-          if (!snap.exists()) throw "User not found";
-
-          const balance = Number(snap.data().balance || 0);
-
-          if (balance < this.bet) {
-            throw "رصيدك غير كافٍ";
-          }
-
-          // 🎯 منطق الفوز (40%)
-          const win = Math.random() < 0.4;
-          let profit = 0;
-
-          if (win) {
-            profit = this.bet; // ×2 = ربح صافي = نفس المبلغ
-            tx.update(userRef, {
-              balance: balance + profit
-            });
-          } else {
-            profit = -this.bet;
-            tx.update(userRef, {
-              balance: balance - this.bet
-            });
-          }
-
-          // 🧾 تسجيل اللعبة
-          await addDoc(collection(db, "games_logs"), {
-            uid: user.uid,
-            game: "limited_luck",
-            bet: this.bet,
-            result: win ? "win" : "lose",
-            profit,
-            createdAt: serverTimestamp()
-          });
-
-          this.message = win
-            ? `✅ ربحت ${profit} USDT`
-            : `❌ خسرت ${this.bet} USDT`;
-
-          this.resultClass = win ? "win" : "lose";
-        });
-      } catch (e) {
-        this.message = typeof e === "string" ? e : "حدث خطأ";
-        this.resultClass = "lose";
+      if (this.position < this.steps.length - 1) {
+        this.position++;
       }
+    },
 
-      this.loading = false;
-    }
-  }
+    cashOut() {
+      this.result = "win";
+      this.started = false;
+
+      // 🔥 هنا لاحقًا:
+      // أضف الربح إلى رصيد USDT في Firestore
+    },
+  },
 };
 </script>
 
 <style scoped>
-.game-card {
-  background: #eef5ff;
-  padding: 16px;
-  border-radius: 16px;
+.game-page {
+  direction: rtl;
+  padding: 20px;
+  min-height: 100vh;
+  background: linear-gradient(#222, #444);
+  color: #fff;
+  text-align: center;
+}
+
+.title {
+  font-size: 24px;
+  margin-bottom: 5px;
+}
+
+.sub {
+  color: #ccc;
   margin-bottom: 20px;
 }
 
-input {
-  width: 100%;
+.bet-box input {
+  width: 80%;
   padding: 10px;
-  margin: 10px 0;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  border: none;
 }
 
-button {
-  width: 100%;
+.bet-box button {
+  width: 80%;
   padding: 12px;
+  border-radius: 12px;
   background: #0d6efd;
   color: white;
+  border: none;
+  font-size: 16px;
+}
+
+.road {
+  display: flex;
+  justify-content: space-between;
+  margin: 20px 0;
+}
+
+.step {
+  width: 18%;
+  background: #333;
+  border-radius: 12px;
+  padding: 10px;
+  position: relative;
+}
+
+.step.active {
+  background: #0d6efd;
+}
+
+.multiplier {
+  font-weight: bold;
+}
+
+.chicken {
+  font-size: 30px;
+  margin-top: 10px;
+}
+
+.controls button {
+  width: 45%;
+  padding: 12px;
   border-radius: 12px;
   border: none;
-  font-weight: bold;
+  font-size: 16px;
+  margin: 5px;
 }
 
-.win {
-  color: green;
-  font-weight: bold;
+.forward {
+  background: #28a745;
+  color: white;
 }
 
-.lose {
-  color: red;
+.cashout {
+  background: #ffc107;
+  color: black;
+}
+
+.result {
+  margin-top: 20px;
+  font-size: 22px;
   font-weight: bold;
 }
 </style>
