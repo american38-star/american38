@@ -3,7 +3,7 @@
 
     <h2 class="title">🐔 Chicken Road</h2>
     <p class="sub">
-      كل خطوة مخاطرة… القرار بيدك، وقد تكون هذه خطوتك الرابحة 🔥
+      كل خطوة مخاطرة… القرار بيدك 🔥
     </p>
 
     <div class="balance">
@@ -54,7 +54,6 @@
       </button>
     </div>
 
-    <!-- الرسائل -->
     <div v-if="result" class="result">
       {{ result }}
     </div>
@@ -77,27 +76,21 @@ export default {
       position: 0,
       result: "",
 
-      // ✅ نسب الفوز تبدأ من 35% وتتناقص
-      steps: [
-        { multiplier: 1.0, winChance: 0.35 }, // 35%
-        { multiplier: 1.2, winChance: 0.25 }, // 25%
-        { multiplier: 1.5, winChance: 0.18 }, // 18%
-        { multiplier: 2.0, winChance: 0.12 }, // 12%
-        { multiplier: 3.0, winChance: 0.07 }, // 7%
-        { multiplier: 5.0, winChance: 0.04 }, // 4%
-      ],
+      // ستأتي من Firestore
+      steps: [],
     };
   },
 
   computed: {
     currentProfit() {
-      if (!this.started) return 0;
+      if (!this.started || !this.steps.length) return 0;
       return this.bet * this.steps[this.position].multiplier;
     },
   },
 
   async created() {
     await this.loadBalance();
+    await this.loadGameSettings();
   },
 
   methods: {
@@ -111,11 +104,18 @@ export default {
       }
     },
 
+    async loadGameSettings() {
+      const snap = await getDoc(doc(db, "settings", "chickenRoad"));
+      if (snap.exists()) {
+        this.steps = snap.data().steps || [];
+      }
+    },
+
     async startGame() {
       this.result = "";
 
       if (!this.bet || this.bet <= 0) {
-        this.result = "⚠️ الرجاء إدخال مبلغ للعب";
+        this.result = "⚠️ أدخل مبلغ صحيح";
         return;
       }
 
@@ -127,7 +127,6 @@ export default {
       const user = auth.currentUser;
       if (!user) return;
 
-      // خصم الرهان مباشرة
       this.balance -= this.bet;
       await updateDoc(doc(db, "users", user.uid), {
         balance: this.balance,
@@ -141,15 +140,15 @@ export default {
       const step = this.steps[this.position];
       const roll = Math.random();
 
-      // ❌ خسارة
+      // خسارة
       if (roll > step.winChance) {
-        this.result = "💥 خسرت! المخاطرة كانت أعلى من الحظ";
+        this.result = "💥 خسرت! الحظ لم يكن معك";
         this.started = false;
         this.bet = null;
         return;
       }
 
-      // ✅ تقدم
+      // تقدم
       if (this.position < this.steps.length - 1) {
         this.position++;
       } else {
@@ -186,19 +185,9 @@ export default {
   text-align: center;
 }
 
-.title {
-  font-size: 24px;
-}
-
-.sub {
-  color: #bbb;
-  margin-bottom: 12px;
-}
-
-.balance {
-  font-weight: bold;
-  margin-bottom: 15px;
-}
+.title { font-size: 24px; }
+.sub { color: #bbb; margin-bottom: 12px; }
+.balance { font-weight: bold; margin-bottom: 15px; }
 
 .bet-box input {
   width: 80%;
@@ -230,18 +219,9 @@ export default {
   padding: 10px;
 }
 
-.step.active {
-  background: #0d6efd;
-}
-
-.multiplier {
-  font-weight: bold;
-}
-
-.chicken {
-  font-size: 26px;
-  margin-top: 5px;
-}
+.step.active { background: #0d6efd; }
+.multiplier { font-weight: bold; }
+.chicken { font-size: 26px; margin-top: 5px; }
 
 .controls button {
   width: 45%;
@@ -251,15 +231,8 @@ export default {
   border: none;
 }
 
-.forward {
-  background: #28a745;
-  color: white;
-}
-
-.cashout {
-  background: #ffc107;
-  color: black;
-}
+.forward { background: #28a745; color: white; }
+.cashout { background: #ffc107; color: black; }
 
 .result {
   margin-top: 20px;
