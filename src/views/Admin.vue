@@ -326,12 +326,12 @@
       <div class="modal">
         <h3>تفاصيل المستخدم</h3>
         <p><strong>البريد:</strong> {{ userDetails.email || '—' }}</p>
-        <p><strong>عدد الإحالات:</strong> {{ userDetails.referralCount || 0 }}</p>
-        <p><strong>مبلغ الشحن الكلي في الفريق:</strong> {{ userDetails.teamRechargeTotal || 0 }} USDT</p>
+        <p><strong>عدد الإحالات (المستوى 1):</strong> {{ userDetails.referralCount || 0 }}</p>
+        <p><strong>مبلغ الشحن الكلي (المستوى 1):</strong> {{ userDetails.level1RechargeTotal || 0 }} USDT</p>
         
-        <!-- قائمة المستخدمين المحالين -->
+        <!-- قائمة المستخدمين المحالين للمستوى الأول فقط -->
         <div v-if="userDetails.referredUsers && userDetails.referredUsers.length > 0" class="referred-users">
-          <h4>المستخدمين المحالين:</h4>
+          <h4>المستخدمين المحالين (المستوى 1):</h4>
           <div class="users-list">
             <div class="user-item" v-for="refUser in userDetails.referredUsers" :key="refUser.id">
               <p><strong>البريد:</strong> {{ refUser.email || '—' }}</p>
@@ -437,7 +437,7 @@ export default {
       userDetails: {
         email: "",
         referralCount: 0,
-        teamRechargeTotal: 0,
+        level1RechargeTotal: 0,
         referredUsers: []
       },
     };
@@ -593,18 +593,18 @@ export default {
     }
   },
   methods: {
-    // 🔥 دالة جديدة لعرض تفاصيل المستخدم
+    // 🔥 دالة جديدة لعرض تفاصيل المستخدم - المستوى الأول فقط
     async viewUserDetails(user) {
       try {
         this.showUserDetailsModal = true;
         this.userDetails = {
           email: user.email,
           referralCount: 0,
-          teamRechargeTotal: 0,
+          level1RechargeTotal: 0,
           referredUsers: []
         };
 
-        // 1. حساب عدد الإحالات المباشرة
+        // 1. البحث عن الإحالات المباشرة للمستوى الأول فقط
         const directReferralsQuery = query(
           collection(db, "users"),
           where("invitedBy", "==", user.id)
@@ -616,7 +616,7 @@ export default {
           const referralData = docSnap.data();
           const referralId = docSnap.id;
           
-          // حساب إجمالي الشحن للمستخدم المحال
+          // حساب إجمالي الشحن للمستخدم المحال (المستوى 1)
           let totalRecharge = 0;
           try {
             const transactionsQuery = query(
@@ -641,110 +641,15 @@ export default {
             totalRecharge: totalRecharge
           });
           
-          // إضافة مبلغ الشحن إلى المجموع الكلي
-          this.userDetails.teamRechargeTotal += totalRecharge;
+          // إضافة مبلغ الشحن إلى المجموع الكلي للمستوى الأول
+          this.userDetails.level1RechargeTotal += totalRecharge;
         }
 
-        // 2. حساب المستوى الثاني والثالث للإحالات
-        let level2Referrals = [];
-        let level3Referrals = [];
-        
-        // البحث عن المستوى الثاني (المستخدمين الذين invitedBy هو من الإحالات المباشرة)
-        for (const directRef of directReferralUsers) {
-          const level2Query = query(
-            collection(db, "users"),
-            where("invitedBy", "==", directRef.id)
-          );
-          const level2Snap = await getDocs(level2Query);
-          
-          for (const level2Doc of level2Snap.docs) {
-            const level2Data = level2Doc.data();
-            const level2Id = level2Doc.id;
-            
-            // حساب إجمالي الشحن للمستخدم في المستوى الثاني
-            let level2Recharge = 0;
-            try {
-              const level2TransactionsQuery = query(
-                collection(db, "transactions"),
-                where("userId", "==", level2Id),
-                where("type", "in", ["recharge", "approved_recharge"]),
-                where("status", "in", ["approved", "completed", "success"])
-              );
-              const level2TransactionsSnap = await getDocs(level2TransactionsQuery);
-              level2TransactionsSnap.docs.forEach(transactionDoc => {
-                const transactionData = transactionDoc.data();
-                level2Recharge += Number(transactionData.amount || 0);
-              });
-            } catch (error) {
-              console.error("Error calculating level2 recharge:", error);
-            }
+        // 2. تحديث بيانات العرض للمستوى الأول فقط
+        this.userDetails.referralCount = directReferralUsers.length;
+        this.userDetails.referredUsers = directReferralUsers;
 
-            level2Referrals.push({
-              id: level2Id,
-              email: level2Data.email || "",
-              createdAt: level2Data.createdAt || level2Data.registeredAt || null,
-              totalRecharge: level2Recharge,
-              referredBy: directRef.email
-            });
-            
-            // إضافة مبلغ الشحن إلى المجموع الكلي
-            this.userDetails.teamRechargeTotal += level2Recharge;
-
-            // البحث عن المستوى الثالث
-            const level3Query = query(
-              collection(db, "users"),
-              where("invitedBy", "==", level2Id)
-            );
-            const level3Snap = await getDocs(level3Query);
-            
-            for (const level3Doc of level3Snap.docs) {
-              const level3Data = level3Doc.data();
-              const level3Id = level3Doc.id;
-              
-              // حساب إجمالي الشحن للمستخدم في المستوى الثالث
-              let level3Recharge = 0;
-              try {
-                const level3TransactionsQuery = query(
-                  collection(db, "transactions"),
-                  where("userId", "==", level3Id),
-                  where("type", "in", ["recharge", "approved_recharge"]),
-                  where("status", "in", ["approved", "completed", "success"])
-                );
-                const level3TransactionsSnap = await getDocs(level3TransactionsQuery);
-                level3TransactionsSnap.docs.forEach(transactionDoc => {
-                  const transactionData = transactionDoc.data();
-                  level3Recharge += Number(transactionData.amount || 0);
-                });
-              } catch (error) {
-                console.error("Error calculating level3 recharge:", error);
-              }
-
-              level3Referrals.push({
-                id: level3Id,
-                email: level3Data.email || "",
-                createdAt: level3Data.createdAt || level3Data.registeredAt || null,
-                totalRecharge: level3Recharge,
-                referredBy: level2Data.email
-              });
-              
-              // إضافة مبلغ الشحن إلى المجموع الكلي
-              this.userDetails.teamRechargeTotal += level3Recharge;
-            }
-          }
-        }
-
-        // 3. جمع جميع المستخدمين المحالين مع تحديد المستوى
-        const allReferredUsers = [
-          ...directReferralUsers.map(user => ({ ...user, level: 1 })),
-          ...level2Referrals.map(user => ({ ...user, level: 2 })),
-          ...level3Referrals.map(user => ({ ...user, level: 3 }))
-        ];
-
-        // 4. تحديث بيانات العرض
-        this.userDetails.referralCount = allReferredUsers.length;
-        this.userDetails.referredUsers = allReferredUsers;
-
-        console.log("تفاصيل المستخدم المحملة:", this.userDetails);
+        console.log("تفاصيل المستخدم (المستوى 1 فقط):", this.userDetails);
 
       } catch (error) {
         console.error("خطأ في جلب تفاصيل المستخدم:", error);
@@ -758,7 +663,7 @@ export default {
       this.userDetails = {
         email: "",
         referralCount: 0,
-        teamRechargeTotal: 0,
+        level1RechargeTotal: 0,
         referredUsers: []
       };
     },
