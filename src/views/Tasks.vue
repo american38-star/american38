@@ -1,59 +1,92 @@
 <template>
-  <div class="plinko-page">
-    <h2 class="title">🎯 Plinko</h2>
+  <div class="game-page">
+
+    <!-- اختيار اللعبة -->
+    <div class="tabs">
+      <button :class="{active: game==='chicken'}" @click="game='chicken'">
+        🐔 Chicken Road
+      </button>
+      <button :class="{active: game==='plinko'}" @click="game='plinko'">
+        🔴 Plinko
+      </button>
+    </div>
 
     <div class="balance">
       رصيدك: {{ balance.toFixed(2) }} USDT
     </div>
 
-    <!-- الإعدادات -->
-    <div v-if="!playing" class="controls-box">
-      <input
-        type="number"
-        v-model.number="bet"
-        placeholder="مبلغ الرهان USDT"
-      />
+    <!-- ================= CHICKEN ROAD ================= -->
+    <div v-if="game==='chicken'">
 
-      <select v-model="risk">
-        <option value="low">Low Risk</option>
-        <option value="medium">Medium Risk</option>
-        <option value="high">High Risk</option>
-      </select>
+      <h2>🐔 Chicken Road</h2>
 
-      <button @click="startGame">PLAY</button>
+      <div v-if="!started" class="bet-box">
+        <input type="number" v-model.number="bet" placeholder="مبلغ الرهان" />
+        <button @click="startChicken">ابدأ</button>
+      </div>
+
+      <div v-if="started" class="road">
+        <div
+          v-for="(step,i) in steps"
+          :key="i"
+          class="step"
+          :class="{active:i===position}"
+        >
+          x{{ step.multiplier }}
+          <div v-if="i===position">🐔</div>
+        </div>
+      </div>
+
+      <div v-if="started" class="controls">
+        <div>الربح: {{ currentProfit.toFixed(2) }}</div>
+        <button @click="goNext">تقدم</button>
+        <button @click="cashOutChicken">سحب</button>
+      </div>
+
     </div>
 
-    <!-- لوحة بلينكو -->
-    <div v-if="playing" class="board">
-      <div
-        v-for="(row, r) in rows"
-        :key="r"
-        class="row"
-      >
+    <!-- ================= PLINKO ================= -->
+    <div v-if="game==='plinko'" class="plinko">
+
+      <h2>🔴 Plinko</h2>
+
+      <div v-if="!plinkoStarted" class="bet-box">
+        <input type="number" v-model.number="plinkoBet" placeholder="مبلغ الرهان" />
+        <button @click="startPlinko">PLAY</button>
+      </div>
+
+      <!-- اللوحة -->
+      <div class="board">
+        <div
+          v-for="(row,r) in rows"
+          :key="r"
+          class="row"
+        >
+          <span v-for="(dot,d) in row" :key="d" class="dot"></span>
+        </div>
+
+        <!-- الكرة -->
+        <div
+          v-if="ball.active"
+          class="ball"
+          :style="{ top: ball.y+'px', left: ball.x+'px' }"
+        ></div>
+      </div>
+
+      <!-- المضاعفات -->
+      <div class="multipliers">
         <span
-          v-for="(dot, d) in row"
-          :key="d"
-          class="dot"
-        ></span>
+          v-for="(m,i) in plinkoMultipliers"
+          :key="i"
+        >
+          x{{ m }}
+        </span>
       </div>
 
-      <div class="ball">🔴</div>
     </div>
 
-    <!-- المضاعفات -->
-    <div class="multipliers">
-      <div
-        v-for="(m, i) in multipliers"
-        :key="i"
-        class="mult"
-      >
-        x{{ m }}
-      </div>
-    </div>
+    <div v-if="result" class="result">{{ result }}</div>
 
-    <div v-if="result" class="result">
-      {{ result }}
-    </div>
   </div>
 </template>
 
@@ -62,201 +95,193 @@ import { auth, db } from "../firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 export default {
-  name: "PlinkoGame",
-
   data() {
     return {
+      game: "chicken",
       balance: 0,
-      bet: null,
-      playing: false,
       result: "",
-      risk: "medium",
 
-      // عدد الصفوف
-      rowCount: 8,
+      /* ===== Chicken ===== */
+      bet: null,
+      started: false,
+      position: 0,
+      steps: [
+        { multiplier: 1 },
+        { multiplier: 1.3 },
+        { multiplier: 1.7 },
+        { multiplier: 2.5 },
+        { multiplier: 4 },
+      ],
 
-      // ربح الجلسة
-      sessionProfit: 0,
-
-      multipliers: [],
+      /* ===== Plinko ===== */
+      plinkoBet: null,
+      plinkoStarted: false,
+      rows: Array.from({ length: 8 }, (_, i) =>
+        Array.from({ length: i + 3 })
+      ),
+      plinkoMultipliers: [0.3, 0.5, 1, 1.5, 3, 5, 10],
+      ball: {
+        x: 150,
+        y: 0,
+        active: false,
+      },
     };
   },
 
   computed: {
-    rows() {
-      return Array.from({ length: this.rowCount }, (_, i) =>
-        Array(i + 1).fill(0)
-      );
-    },
-
-    // 🧠 نسبة الفوز الذكية
-    winChance() {
-      let base =
-        this.risk === "low" ? 0.45 :
-        this.risk === "medium" ? 0.32 : 0.18;
-
-      base -= Math.max(this.sessionProfit, 0) * 0.03;
-      if (base < 0.08) base = 0.08;
-
-      return base;
+    currentProfit() {
+      return this.bet ? this.bet * this.steps[this.position].multiplier : 0;
     },
   },
 
   async created() {
-    await this.loadBalance();
-    this.buildMultipliers();
+    const user = auth.currentUser;
+    if (!user) return;
+    const snap = await getDoc(doc(db, "users", user.uid));
+    this.balance = Number(snap.data().balance || 0);
   },
 
   methods: {
-    async loadBalance() {
-      const user = auth.currentUser;
-      if (!user) return;
-
-      const snap = await getDoc(doc(db, "users", user.uid));
-      if (snap.exists()) {
-        this.balance = Number(snap.data().balance || 0);
-      }
-    },
-
-    buildMultipliers() {
-      if (this.risk === "low") {
-        this.multipliers = [0.5, 0.8, 1, 1.2, 1.5, 1.2, 1, 0.8, 0.5];
-      } else if (this.risk === "medium") {
-        this.multipliers = [0.3, 0.5, 0.8, 1, 1.5, 2, 1.5, 0.8, 0.3];
-      } else {
-        this.multipliers = [0.2, 0.3, 0.5, 1, 3, 5, 3, 0.5, 0.2];
-      }
-    },
-
-    async startGame() {
-      this.result = "";
-
-      if (!this.bet || this.bet <= 0) {
-        this.result = "⚠️ أدخل مبلغ صحيح";
-        return;
-      }
-
-      if (this.bet > this.balance) {
-        this.result = "❌ الرصيد غير كافي";
-        return;
-      }
-
-      const user = auth.currentUser;
-      if (!user) return;
-
+    /* ===== Chicken ===== */
+    async startChicken() {
+      if (!this.bet || this.bet > this.balance) return;
       this.balance -= this.bet;
-      await updateDoc(doc(db, "users", user.uid), {
+      await updateDoc(doc(db, "users", auth.currentUser.uid), {
         balance: this.balance,
       });
-
-      this.buildMultipliers();
-      this.playing = true;
-
-      setTimeout(this.finishGame, 1500);
+      this.started = true;
+      this.position = 0;
+      this.result = "";
     },
 
-    async finishGame() {
-      const roll = Math.random();
-
-      let index;
-      if (roll < this.winChance) {
-        index = Math.floor(this.multipliers.length / 2);
-      } else {
-        index = Math.floor(Math.random() * this.multipliers.length);
+    goNext() {
+      if (Math.random() > 0.4 - this.position * 0.05) {
+        this.result = "💥 خسرت";
+        this.started = false;
+        return;
       }
+      if (this.position < this.steps.length - 1) this.position++;
+      else this.cashOutChicken();
+    },
 
-      const multiplier = this.multipliers[index];
-      const win = this.bet * multiplier;
+    async cashOutChicken() {
+      const profit = this.currentProfit;
+      this.balance += profit;
+      await updateDoc(doc(db, "users", auth.currentUser.uid), {
+        balance: this.balance,
+      });
+      this.result = `🎉 ربحت ${profit.toFixed(2)} USDT`;
+      this.started = false;
+    },
 
-      this.sessionProfit += win - this.bet;
-      this.balance += win;
+    /* ===== Plinko ===== */
+    async startPlinko() {
+      if (!this.plinkoBet || this.plinkoBet > this.balance) return;
 
-      const user = auth.currentUser;
-      await updateDoc(doc(db, "users", user.uid), {
+      this.balance -= this.plinkoBet;
+      await updateDoc(doc(db, "users", auth.currentUser.uid), {
         balance: this.balance,
       });
 
-      this.result =
-        win > this.bet
-          ? `🎉 ربحت ${win.toFixed(2)} USDT`
-          : `💥 خسرت ${this.bet.toFixed(2)} USDT`;
+      this.ball = { x: 150, y: 0, active: true };
+      this.dropBall();
+    },
 
-      this.playing = false;
-      this.bet = null;
+    dropBall() {
+      let interval = setInterval(async () => {
+        this.ball.y += 10;
+        this.ball.x += Math.random() > 0.5 ? 6 : -6;
+
+        if (this.ball.y > 260) {
+          clearInterval(interval);
+          this.ball.active = false;
+
+          const index = Math.floor(Math.random() * this.plinkoMultipliers.length);
+          const win =
+            this.plinkoBet * this.plinkoMultipliers[index];
+
+          this.balance += win;
+          await updateDoc(doc(db, "users", auth.currentUser.uid), {
+            balance: this.balance,
+          });
+
+          this.result = `🎯 Plinko ربحت ${win.toFixed(2)} USDT`;
+        }
+      }, 40);
     },
   },
 };
 </script>
 
 <style scoped>
-.plinko-page {
-  direction: rtl;
+.game-page {
+  background: #0f172a;
+  color: white;
   min-height: 100vh;
-  background: radial-gradient(circle, #1a2a3a, #0b1320);
-  color: #fff;
-  padding: 20px;
+  padding: 15px;
   text-align: center;
 }
 
-.title { font-size: 26px; margin-bottom: 10px; }
-.balance { font-weight: bold; margin-bottom: 15px; }
-
-.controls-box input,
-.controls-box select {
-  width: 80%;
+.tabs button {
+  margin: 5px;
   padding: 10px;
-  border-radius: 10px;
-  margin-bottom: 10px;
-  border: none;
+}
+.tabs .active {
+  background: #22c55e;
 }
 
-.controls-box button {
-  width: 80%;
-  padding: 14px;
-  border-radius: 14px;
-  background: #00ff7f;
-  border: none;
+.balance {
+  margin: 10px 0;
   font-weight: bold;
 }
 
-.board {
-  margin: 20px 0;
+.road {
+  display: flex;
+  justify-content: space-between;
+}
+.step {
+  background: #1e293b;
+  padding: 10px;
+  border-radius: 8px;
+}
+.step.active {
+  background: #22c55e;
 }
 
+.plinko .board {
+  position: relative;
+  height: 300px;
+  margin: 10px auto;
+}
 .row {
   display: flex;
   justify-content: center;
 }
-
 .dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   background: white;
   border-radius: 50%;
   margin: 8px;
 }
 
 .ball {
-  font-size: 28px;
-  margin: 10px 0;
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: red;
+  border-radius: 50%;
 }
 
-.multipliers {
-  display: flex;
-  justify-content: space-between;
-}
-
-.mult {
-  width: 10%;
-  background: #ff9800;
-  border-radius: 8px;
-  padding: 6px;
-  font-size: 12px;
+.multipliers span {
+  margin: 4px;
+  padding: 4px 8px;
+  background: #1e293b;
+  border-radius: 6px;
 }
 
 .result {
-  margin-top: 20px;
-  font-size: 20px;
-  font-weight: bold;
+  margin-top: 15px;
+  font-size: 18px;
 }
 </style>
