@@ -1,63 +1,49 @@
 <template>
   <div class="game-page">
-
     <h2 class="title">🐔 Chicken Road</h2>
-    <p class="sub">
-      كل خطوة مخاطرة… القرار بيدك 🔥
-    </p>
 
-    <div class="balance">
-      رصيدك: {{ balance.toFixed(2) }} USDT
+    <div v-if="!gameEnabled" class="result">
+      🚫 اللعبة متوقفة حالياً
     </div>
 
-    <!-- إدخال الرهان -->
-    <div v-if="!started" class="bet-box">
-      <input
-        type="number"
-        v-model.number="bet"
-        placeholder="أدخل مبلغ USDT"
-      />
-      <button @click="startGame">
-        ابدأ اللعب
-      </button>
-    </div>
-
-    <!-- الطريق -->
-    <div v-if="started" class="road">
-      <div
-        v-for="(step, i) in steps"
-        :key="i"
-        class="step"
-        :class="{ active: i === position }"
-      >
-        <div class="multiplier">x{{ step.multiplier }}</div>
-        <div v-if="i === position" class="chicken">🐔</div>
-      </div>
-    </div>
-
-    <!-- التحكم -->
-    <div v-if="started" class="controls">
-      <div class="profit">
-        الربح الحالي: {{ currentProfit.toFixed(2) }} USDT
+    <div v-else>
+      <div class="balance">
+        رصيدك: {{ balance.toFixed(2) }} USDT
       </div>
 
-      <button class="forward" @click="goNext">
-        إلى الأمام
-      </button>
+      <!-- الرهان -->
+      <div v-if="!started" class="bet-box">
+        <input type="number" v-model.number="bet" placeholder="أدخل مبلغ الرهان" />
+        <button @click="startGame">ابدأ اللعب</button>
+      </div>
 
-      <button
-        class="cashout"
-        @click="cashOut"
-        :disabled="position === 0"
-      >
-        سحب الأرباح
-      </button>
+      <!-- الطريق -->
+      <div v-if="started" class="road">
+        <div
+          v-for="(m, i) in multipliers"
+          :key="i"
+          class="step"
+          :class="{ active: i === position }"
+        >
+          <div>x{{ m }}</div>
+          <div v-if="i === position">🐔</div>
+        </div>
+      </div>
+
+      <!-- التحكم -->
+      <div v-if="started" class="controls">
+        <div class="profit">
+          الربح الحالي: {{ currentProfit.toFixed(2) }} USDT
+        </div>
+
+        <button class="forward" @click="goNext">إلى الأمام</button>
+        <button class="cashout" @click="cashOut" :disabled="position === 0">
+          سحب
+        </button>
+      </div>
+
+      <div v-if="result" class="result">{{ result }}</div>
     </div>
-
-    <div v-if="result" class="result">
-      {{ result }}
-    </div>
-
   </div>
 </template>
 
@@ -76,15 +62,19 @@ export default {
       position: 0,
       result: "",
 
-      // ستأتي من Firestore
-      steps: [],
+      // من لوحة الإدارة
+      multipliers: [],
+      baseWinRate: 0.3,
+      decreasePerLevel: 0.03,
+      minWinRate: 0.05,
+      gameEnabled: true,
     };
   },
 
   computed: {
     currentProfit() {
-      if (!this.started || !this.steps.length) return 0;
-      return this.bet * this.steps[this.position].multiplier;
+      if (!this.started) return 0;
+      return this.bet * this.multipliers[this.position];
     },
   },
 
@@ -105,10 +95,15 @@ export default {
     },
 
     async loadGameSettings() {
-      const snap = await getDoc(doc(db, "settings", "chickenRoad"));
-      if (snap.exists()) {
-        this.steps = snap.data().steps || [];
-      }
+      const snap = await getDoc(doc(db, "settings", "game_settings"));
+      if (!snap.exists()) return;
+
+      const d = snap.data();
+      this.multipliers = d.multipliers || [];
+      this.baseWinRate = d.baseWinRate;
+      this.decreasePerLevel = d.decreasePerLevel;
+      this.minWinRate = d.minWinRate;
+      this.gameEnabled = d.gameEnabled;
     },
 
     async startGame() {
@@ -137,19 +132,24 @@ export default {
     },
 
     goNext() {
-      const step = this.steps[this.position];
+      const level = this.position;
+      let winChance =
+        this.baseWinRate - level * this.decreasePerLevel;
+
+      if (winChance < this.minWinRate) {
+        winChance = this.minWinRate;
+      }
+
       const roll = Math.random();
 
-      // خسارة
-      if (roll > step.winChance) {
-        this.result = "💥 خسرت! الحظ لم يكن معك";
+      if (roll > winChance) {
+        this.result = "💥 خسرت!";
         this.started = false;
         this.bet = null;
         return;
       }
 
-      // تقدم
-      if (this.position < this.steps.length - 1) {
+      if (this.position < this.multipliers.length - 1) {
         this.position++;
       } else {
         this.cashOut();
@@ -174,69 +174,3 @@ export default {
   },
 };
 </script>
-
-<style scoped>
-.game-page {
-  direction: rtl;
-  padding: 20px;
-  min-height: 100vh;
-  background: #111;
-  color: #fff;
-  text-align: center;
-}
-
-.title { font-size: 24px; }
-.sub { color: #bbb; margin-bottom: 12px; }
-.balance { font-weight: bold; margin-bottom: 15px; }
-
-.bet-box input {
-  width: 80%;
-  padding: 10px;
-  border-radius: 10px;
-  margin-bottom: 10px;
-  border: none;
-}
-
-.bet-box button {
-  width: 80%;
-  padding: 12px;
-  border-radius: 12px;
-  background: #0d6efd;
-  color: white;
-  border: none;
-}
-
-.road {
-  display: flex;
-  justify-content: space-between;
-  margin: 20px 0;
-}
-
-.step {
-  width: 15%;
-  background: #333;
-  border-radius: 12px;
-  padding: 10px;
-}
-
-.step.active { background: #0d6efd; }
-.multiplier { font-weight: bold; }
-.chicken { font-size: 26px; margin-top: 5px; }
-
-.controls button {
-  width: 45%;
-  padding: 12px;
-  border-radius: 12px;
-  margin: 5px;
-  border: none;
-}
-
-.forward { background: #28a745; color: white; }
-.cashout { background: #ffc107; color: black; }
-
-.result {
-  margin-top: 20px;
-  font-size: 20px;
-  font-weight: bold;
-}
-</style>
