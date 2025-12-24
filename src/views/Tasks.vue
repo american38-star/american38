@@ -70,17 +70,17 @@
           class="ball"    
           :style="{ top: ball.y+'px', left: ball.x+'px' }"    
         ></div>    
-      </div>    
-    
-      <!-- المضاعفات (مطابقة للصورة) -->    
-      <div class="multipliers">    
-        <span    
-          v-for="(m,i) in plinkoMultipliers"    
-          :key="i"    
-          :class="multiplierClass(m)"    
-        >    
-          x{{ m }}    
-        </span>    
+
+        <!-- المضاعفات تحت آخر صف نقاط مباشرة -->    
+        <div class="multipliers plinko-bottom">    
+          <span    
+            v-for="(m,i) in plinkoMultipliers"    
+            :key="i"    
+            :class="multiplierClass(m)"    
+          >    
+            x{{ m }}    
+          </span>    
+        </div>    
       </div>    
     </div>    
     
@@ -296,7 +296,7 @@ export default {
     
 .plinko-board {    
   position: relative;    
-  height: 260px;    
+  height: 300px;    
   margin: 15px auto 5px auto;    
 }    
     
@@ -336,6 +336,19 @@ export default {
   font-size: 12px;    
   min-width: 40px;    
   text-align: center;    
+}    
+    
+/* ✅ تصغير المضاعفات وتحت النقاط مباشرة */    
+.multipliers.plinko-bottom {    
+  justify-content: space-between;    
+  padding: 0 6px;    
+  margin-top: 6px;    
+}    
+    
+.multipliers.plinko-bottom span {    
+  font-size: 10px;    
+  padding: 3px 4px;    
+  min-width: 28px;    
 }    
     
 .high { background: #dc2626; }    
