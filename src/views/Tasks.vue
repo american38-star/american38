@@ -1,52 +1,54 @@
 <template>
-  <div class="game-page">
-    <h2 class="title">🐔 Chicken Road</h2>
-    <p class="sub">
-      كل خطوة مخاطرة… القرار بيدك 🔥
-    </p>
+  <div class="plinko-page">
+    <h2 class="title">🎯 Plinko</h2>
 
     <div class="balance">
       رصيدك: {{ balance.toFixed(2) }} USDT
     </div>
 
-    <!-- إدخال الرهان -->
-    <div v-if="!started" class="bet-box">
+    <!-- الإعدادات -->
+    <div v-if="!playing" class="controls-box">
       <input
         type="number"
         v-model.number="bet"
-        placeholder="أدخل مبلغ USDT"
+        placeholder="مبلغ الرهان USDT"
       />
-      <button @click="startGame">ابدأ اللعب</button>
+
+      <select v-model="risk">
+        <option value="low">Low Risk</option>
+        <option value="medium">Medium Risk</option>
+        <option value="high">High Risk</option>
+      </select>
+
+      <button @click="startGame">PLAY</button>
     </div>
 
-    <!-- الطريق -->
-    <div v-if="started" class="road">
+    <!-- لوحة بلينكو -->
+    <div v-if="playing" class="board">
       <div
-        v-for="(step, i) in steps"
-        :key="i"
-        class="step"
-        :class="{ active: i === position }"
+        v-for="(row, r) in rows"
+        :key="r"
+        class="row"
       >
-        <div class="multiplier">x{{ step.multiplier }}</div>
-        <div v-if="i === position" class="chicken">🐔</div>
+        <span
+          v-for="(dot, d) in row"
+          :key="d"
+          class="dot"
+        ></span>
       </div>
+
+      <div class="ball">🔴</div>
     </div>
 
-    <!-- التحكم -->
-    <div v-if="started" class="controls">
-      <div class="profit">
-        الربح الحالي: {{ currentProfit.toFixed(2) }} USDT
-      </div>
-
-      <button class="forward" @click="goNext">إلى الأمام</button>
-
-      <button
-        class="cashout"
-        @click="cashOut"
-        :disabled="position === 0"
+    <!-- المضاعفات -->
+    <div class="multipliers">
+      <div
+        v-for="(m, i) in multipliers"
+        :key="i"
+        class="mult"
       >
-        سحب الأرباح
-      </button>
+        x{{ m }}
+      </div>
     </div>
 
     <div v-if="result" class="result">
@@ -60,74 +62,69 @@ import { auth, db } from "../firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 export default {
-  name: "ChickenRoad",
+  name: "PlinkoGame",
 
   data() {
     return {
       balance: 0,
       bet: null,
-      started: false,
-      position: 0,
+      playing: false,
       result: "",
+      risk: "medium",
 
-      // 🧠 تتبع ربح الجلسة
+      // عدد الصفوف
+      rowCount: 8,
+
+      // ربح الجلسة
       sessionProfit: 0,
 
-      // 📊 المضاعفات
-      steps: [
-        { multiplier: 1.0 },
-        { multiplier: 1.2 },
-        { multiplier: 1.5 },
-        { multiplier: 2.0 },
-        { multiplier: 3.0 },
-        { multiplier: 5.0 },
-      ],
-
-      // ⚙️ إعدادات الذكاء
-      baseWinRate: 0.45,   // 45%
-      minWinRate: 0.08,    // أقل حد
-      decreasePerStep: 0.06,
+      multipliers: [],
     };
   },
 
   computed: {
-    currentProfit() {
-      if (!this.started || !this.bet || !this.steps[this.position]) {
-        return 0;
-      }
-      return this.bet * this.steps[this.position].multiplier;
+    rows() {
+      return Array.from({ length: this.rowCount }, (_, i) =>
+        Array(i + 1).fill(0)
+      );
     },
 
-    // 🧠 حساب نسبة الفوز الذكية
-    smartWinChance() {
-      let chance =
-        this.baseWinRate -
-        this.position * this.decreasePerStep -
-        Math.max(this.sessionProfit, 0) * 0.02;
+    // 🧠 نسبة الفوز الذكية
+    winChance() {
+      let base =
+        this.risk === "low" ? 0.45 :
+        this.risk === "medium" ? 0.32 : 0.18;
 
-      if (chance < this.minWinRate) chance = this.minWinRate;
-      if (chance > 0.6) chance = 0.6;
+      base -= Math.max(this.sessionProfit, 0) * 0.03;
+      if (base < 0.08) base = 0.08;
 
-      return chance;
+      return base;
     },
   },
 
   async created() {
     await this.loadBalance();
+    this.buildMultipliers();
   },
 
   methods: {
     async loadBalance() {
-      try {
-        const user = auth.currentUser;
-        if (!user) return;
+      const user = auth.currentUser;
+      if (!user) return;
 
-        const snap = await getDoc(doc(db, "users", user.uid));
-        if (snap.exists()) {
-          this.balance = Number(snap.data().balance || 0);
-        }
-      } catch (e) {
-        console.error(e);
+      const snap = await getDoc(doc(db, "users", user.uid));
+      if (snap.exists()) {
+        this.balance = Number(snap.data().balance || 0);
+      }
+    },
+
+    buildMultipliers() {
+      if (this.risk === "low") {
+        this.multipliers = [0.5, 0.8, 1, 1.2, 1.5, 1.2, 1, 0.8, 0.5];
+      } else if (this.risk === "medium") {
+        this.multipliers = [0.3, 0.5, 0.8, 1, 1.5, 2, 1.5, 0.8, 0.3];
+      } else {
+        this.multipliers = [0.2, 0.3, 0.5, 1, 3, 5, 3, 0.5, 0.2];
       }
     },
 
@@ -145,87 +142,67 @@ export default {
       }
 
       const user = auth.currentUser;
-      if (!user) {
-        this.result = "❌ لم يتم تسجيل الدخول";
-        return;
-      }
-
-      try {
-        this.balance -= this.bet;
-        await updateDoc(doc(db, "users", user.uid), {
-          balance: this.balance,
-        });
-
-        this.started = true;
-        this.position = 0;
-        this.sessionProfit = 0;
-      } catch (e) {
-        console.error(e);
-        this.result = "❌ خطأ في بدء اللعبة";
-      }
-    },
-
-    goNext() {
-      if (!this.steps[this.position]) return;
-
-      const roll = Math.random();
-
-      // ❌ خسارة
-      if (roll > this.smartWinChance) {
-        this.result = "💥 خسرت!";
-        this.sessionProfit -= this.bet;
-        this.started = false;
-        this.bet = null;
-        return;
-      }
-
-      // ✅ فوز
-      if (this.position < this.steps.length - 1) {
-        this.position++;
-      } else {
-        this.cashOut();
-      }
-    },
-
-    async cashOut() {
-      const user = auth.currentUser;
       if (!user) return;
 
-      const profit = this.currentProfit;
-      this.sessionProfit += profit;
-      this.balance += profit;
+      this.balance -= this.bet;
+      await updateDoc(doc(db, "users", user.uid), {
+        balance: this.balance,
+      });
 
-      try {
-        await updateDoc(doc(db, "users", user.uid), {
-          balance: this.balance,
-        });
+      this.buildMultipliers();
+      this.playing = true;
 
-        this.result = `🎉 ربحت ${profit.toFixed(2)} USDT`;
-        this.started = false;
-        this.bet = null;
-      } catch (e) {
-        console.error(e);
+      setTimeout(this.finishGame, 1500);
+    },
+
+    async finishGame() {
+      const roll = Math.random();
+
+      let index;
+      if (roll < this.winChance) {
+        index = Math.floor(this.multipliers.length / 2);
+      } else {
+        index = Math.floor(Math.random() * this.multipliers.length);
       }
+
+      const multiplier = this.multipliers[index];
+      const win = this.bet * multiplier;
+
+      this.sessionProfit += win - this.bet;
+      this.balance += win;
+
+      const user = auth.currentUser;
+      await updateDoc(doc(db, "users", user.uid), {
+        balance: this.balance,
+      });
+
+      this.result =
+        win > this.bet
+          ? `🎉 ربحت ${win.toFixed(2)} USDT`
+          : `💥 خسرت ${this.bet.toFixed(2)} USDT`;
+
+      this.playing = false;
+      this.bet = null;
     },
   },
 };
 </script>
 
 <style scoped>
-.game-page {
+.plinko-page {
   direction: rtl;
-  padding: 20px;
   min-height: 100vh;
-  background: #111;
+  background: radial-gradient(circle, #1a2a3a, #0b1320);
   color: #fff;
+  padding: 20px;
   text-align: center;
 }
 
-.title { font-size: 24px; }
-.sub { color: #bbb; margin-bottom: 12px; }
+.title { font-size: 26px; margin-bottom: 10px; }
 .balance { font-weight: bold; margin-bottom: 15px; }
 
-.bet-box input {
+.controls-box input,
+.controls-box select {
   width: 80%;
   padding: 10px;
   border-radius: 10px;
@@ -233,42 +210,49 @@ export default {
   border: none;
 }
 
-.bet-box button {
+.controls-box button {
   width: 80%;
-  padding: 12px;
-  border-radius: 12px;
-  background: #0d6efd;
-  color: white;
+  padding: 14px;
+  border-radius: 14px;
+  background: #00ff7f;
   border: none;
+  font-weight: bold;
 }
 
-.road {
-  display: flex;
-  justify-content: space-between;
+.board {
   margin: 20px 0;
 }
 
-.step {
-  width: 15%;
-  background: #333;
-  border-radius: 12px;
-  padding: 10px;
+.row {
+  display: flex;
+  justify-content: center;
 }
 
-.step.active { background: #0d6efd; }
-.multiplier { font-weight: bold; }
-.chicken { font-size: 26px; margin-top: 5px; }
-
-.controls button {
-  width: 45%;
-  padding: 12px;
-  border-radius: 12px;
-  margin: 5px;
-  border: none;
+.dot {
+  width: 8px;
+  height: 8px;
+  background: white;
+  border-radius: 50%;
+  margin: 8px;
 }
 
-.forward { background: #28a745; color: white; }
-.cashout { background: #ffc107; color: black; }
+.ball {
+  font-size: 28px;
+  margin: 10px 0;
+}
+
+.multipliers {
+  display: flex;
+  justify-content: space-between;
+}
+
+.mult {
+  width: 10%;
+  background: #ff9800;
+  border-radius: 8px;
+  padding: 6px;
+  font-size: 12px;
+}
 
 .result {
   margin-top: 20px;
