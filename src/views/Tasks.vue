@@ -10,8 +10,13 @@
       رصيدك: {{ balance.toFixed(2) }} USDT
     </div>
 
+    <!-- تحميل -->
+    <div v-if="loading" class="result">
+      ⏳ جاري تحميل اللعبة...
+    </div>
+
     <!-- إدخال الرهان -->
-    <div v-if="!started" class="bet-box">
+    <div v-if="!started && !loading" class="bet-box">
       <input
         type="number"
         v-model.number="bet"
@@ -54,6 +59,7 @@
       </button>
     </div>
 
+    <!-- الرسائل -->
     <div v-if="result" class="result">
       {{ result }}
     </div>
@@ -76,13 +82,19 @@ export default {
       position: 0,
       result: "",
       steps: [],
-      settings: null,
+      loading: true,
+
+      // إعدادات
+      baseWinRate: 0.35,
+      decreasePerLevel: 0.03,
+      minWinRate: 0.05,
+      gameEnabled: true,
     };
   },
 
   computed: {
     currentProfit() {
-      if (!this.started) return 0;
+      if (!this.started || !this.steps[this.position]) return 0;
       return this.bet * this.steps[this.position].multiplier;
     },
   },
@@ -90,6 +102,7 @@ export default {
   async created() {
     await this.loadBalance();
     await this.loadGameSettings();
+    this.loading = false;
   },
 
   methods: {
@@ -104,32 +117,35 @@ export default {
     },
 
     async loadGameSettings() {
-      const snap = await getDoc(doc(db, "game_settings", "chicken_road"));
+      const snap = await getDoc(doc(db, "game_settings", "main"));
       if (!snap.exists()) return;
 
-      this.settings = snap.data();
+      const data = snap.data();
 
-      if (!this.settings.gameEnabled) {
-        this.result = "🚫 اللعبة متوقفة حالياً";
-        return;
-      }
+      this.baseWinRate = data.baseWinRate;
+      this.decreasePerLevel = data.decreasePerLevel;
+      this.minWinRate = data.minWinRate;
+      this.gameEnabled = data.gameEnabled;
 
-      // بناء الخطوات من الإعدادات
-      this.steps = this.settings.multipliers.map((m, i) => {
-        const winChance = Math.max(
-          this.settings.baseWinRate - i * this.settings.decreasePerLevel,
-          this.settings.minWinRate
+      this.steps = data.multipliers.map((m, i) => {
+        const chance = Math.max(
+          this.baseWinRate - i * this.decreasePerLevel,
+          this.minWinRate
         );
-
         return {
           multiplier: m,
-          winChance,
+          winChance: chance,
         };
       });
     },
 
     async startGame() {
       this.result = "";
+
+      if (!this.gameEnabled) {
+        this.result = "🚫 اللعبة متوقفة حالياً";
+        return;
+      }
 
       if (!this.bet || this.bet <= 0) {
         this.result = "⚠️ أدخل مبلغ صحيح";
@@ -155,6 +171,8 @@ export default {
 
     goNext() {
       const step = this.steps[this.position];
+      if (!step) return;
+
       const roll = Math.random();
 
       if (roll > step.winChance) {
@@ -189,69 +207,3 @@ export default {
   },
 };
 </script>
-
-<style scoped>
-.game-page {
-  direction: rtl;
-  padding: 20px;
-  min-height: 100vh;
-  background: #111;
-  color: #fff;
-  text-align: center;
-}
-
-.title { font-size: 24px; }
-.sub { color: #bbb; margin-bottom: 12px; }
-.balance { font-weight: bold; margin-bottom: 15px; }
-
-.bet-box input {
-  width: 80%;
-  padding: 10px;
-  border-radius: 10px;
-  margin-bottom: 10px;
-  border: none;
-}
-
-.bet-box button {
-  width: 80%;
-  padding: 12px;
-  border-radius: 12px;
-  background: #0d6efd;
-  color: white;
-  border: none;
-}
-
-.road {
-  display: flex;
-  justify-content: space-between;
-  margin: 20px 0;
-}
-
-.step {
-  width: 15%;
-  background: #333;
-  border-radius: 12px;
-  padding: 10px;
-}
-
-.step.active { background: #0d6efd; }
-.multiplier { font-weight: bold; }
-.chicken { font-size: 26px; margin-top: 5px; }
-
-.controls button {
-  width: 45%;
-  padding: 12px;
-  border-radius: 12px;
-  margin: 5px;
-  border: none;
-}
-
-.forward { background: #28a745; color: white; }
-.cashout { background: #ffc107; color: black; }
-
-.result {
-  margin-top: 20px;
-  font-size: 20px;
-  font-weight: bold;
-}
-</style>
