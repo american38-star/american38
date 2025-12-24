@@ -121,7 +121,7 @@ export default {
       rows: [3,4,5,6,7,8,9,10],    
       plinkoMultipliers: [29, 4, 1.5, 0.3, 0.2, 0.3, 1.5, 4, 29],    
       ball: {    
-        x: 100,    
+        x: 60,    
         y: 0,    
         active: false,    
       },    
