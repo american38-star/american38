@@ -359,11 +359,11 @@ export default {
 }    
     
 .multiplier-item {    
-  padding: 1px 3px;    
+  padding: 1px 2px;    
   border-radius: 2px;    
   font-weight: bold;    
   font-size: 9px;    
-  min-width: 25px;    
+  min-width: 23px;    
   text-align: center;    
   line-height: 1;    
   height: 15px;    
