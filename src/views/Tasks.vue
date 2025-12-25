@@ -65,7 +65,7 @@
     
         <!-- المضاعفات تحت آخر صف نقاط مباشرة -->    
         <div class="multipliers-row">    
-          <div class="multiplier-item">x29</div>    
+          <div class="multiplier-item" style="min-width: 25px;">x29</div>    
           <div class="multiplier-item">x4</div>    
           <div class="multiplier-item">x1.5</div>    
           <div class="multiplier-item">x0.3</div>    
@@ -73,7 +73,7 @@
           <div class="multiplier-item">x0.3</div>    
           <div class="multiplier-item">x1.5</div>    
           <div class="multiplier-item">x4</div>    
-          <div class="multiplier-item">x29</div>    
+          <div class="multiplier-item" style="min-width: 25px;">x29</div>    
         </div>    
     
         <div    
@@ -320,7 +320,7 @@ export default {
     
 .plinko-board {    
   position: relative;    
-  height: 290px;    
+  height: 285px;    
 }    
     
 .row {    
@@ -353,7 +353,7 @@ export default {
   display: flex;    
   justify-content: center;    
   align-items: center;    
-  margin-top: -8px;    
+  margin-top: -12px;    
   padding-top: 0;    
   gap: 0.8px;    
 }    
