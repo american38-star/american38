@@ -302,24 +302,31 @@ export default {
       this.finalMultiplier = multiplier;    
       this.finalMultiplierIndex = multiplierIndex;    
       
-      // محاكاة حركة الكرة مع الوصول إلى المضاعف المحدد    
-      const targetX = this.calculateTargetX(multiplierIndex);    
+      // إحداثيات X النهائية لكل مضاعف (بدقة أكثر)    
+      const targetX = this.calculateExactTargetX(multiplierIndex);    
+      
+      // بدء حركة الكرة  
+      const startX = 150; // مركز البداية  
+      let currentStep = 0;  
+      const totalSteps = 26; // عدد الخطوات للنزول  
       
       const interval = setInterval(async () => {    
-        this.ball.y += 10;    
+        currentStep++;  
+        this.ball.y = currentStep * 10; // نزول بمقدار 10px كل خطوة  
         
-        // تحريك الكرة نحو الهدف النهائي    
-        if (this.ball.x < targetX) {    
-          this.ball.x += Math.random() > 0.3 ? 12 : 8;    
-        } else if (this.ball.x > targetX) {    
-          this.ball.x += Math.random() > 0.3 ? -12 : -8;    
-        } else {    
-          this.ball.x += Math.random() > 0.5 ? 12 : -12;    
-        }    
+        // حساب التقدم في الحركة الأفقية نحو الهدف  
+        const progress = currentStep / totalSteps;  
+        const easeProgress = this.easeInOutCubic(progress);  
+        
+        // تحريك الكرة تدريجياً نحو الهدف النهائي  
+        this.ball.x = startX + (targetX - startX) * easeProgress;  
     
         if (this.ball.y >= 260) {    
           clearInterval(interval);    
           this.ball.active = false;    
+          
+          // التأكد من أن الكرة في الموضع الصحيح  
+          this.ball.x = targetX;  
           
           // حساب الربح بناءً على المضاعف المحدد مسبقاً    
           const win = this.plinkoBet * multiplier;    
@@ -338,30 +345,30 @@ export default {
     calculateFinalMultiplierIndex() {    
       const random = Math.random();    
       
-      // احتمالات مرتبطة بمضاعفات Plinko النموذجية    
-      if (random < 0.05) {    
-        // 5% فرصة للحصول على x29    
-        return Math.random() > 0.5 ? 0 : 8; // أول أو آخر مضاعف    
-      } else if (random < 0.15) {    
-        // 10% فرصة للحصول على x4    
-        return Math.random() > 0.5 ? 1 : 7;    
-      } else if (random < 0.35) {    
-        // 20% فرصة للحصول على x1.5    
-        return Math.random() > 0.5 ? 2 : 6;    
-      } else if (random < 0.65) {    
-        // 30% فرصة للحصول على x0.3    
-        return Math.random() > 0.5 ? 3 : 5;    
-      } else {    
-        // 35% فرصة للحصول على x0.2    
-        return 4;    
+      // احتمالات مرتبطة بمضاعفات Plinko النموذجية (مصححة)  
+      if (random < 0.02) { // 2% فرصة للحصول على x29  
+        return Math.random() > 0.5 ? 0 : 8;  
+      } else if (random < 0.07) { // 5% فرصة للحصول على x4  
+        return Math.random() > 0.5 ? 1 : 7;  
+      } else if (random < 0.17) { // 10% فرصة للحصول على x1.5  
+        return Math.random() > 0.5 ? 2 : 6;  
+      } else if (random < 0.47) { // 30% فرصة للحصول على x0.3  
+        return Math.random() > 0.5 ? 3 : 5;  
+      } else { // 53% فرصة للحصول على x0.2  
+        return 4;  
       }    
     },    
     
-    // حساب موقع X النهائي بناءً على مؤشر المضاعف    
-    calculateTargetX(multiplierIndex) {    
-      // إحداثيات X للمضاعفات من اليسار إلى اليمين    
-      const multiplierPositions = [20, 65, 110, 155, 200, 245, 290, 335, 380];    
+    // حساب موقع X النهائي بدقة  
+    calculateExactTargetX(multiplierIndex) {    
+      // إحداثيات X للمضاعفات من اليسار إلى اليمين (بدقة أكثر)  
+      const multiplierPositions = [30, 75, 120, 165, 210, 255, 300, 345, 390];    
       return multiplierPositions[multiplierIndex];    
+    },  
+    
+    // دالة لتسهيل الحركة (easing function)  
+    easeInOutCubic(t) {  
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;  
     },    
     
     clearError() {    
