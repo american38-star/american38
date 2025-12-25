@@ -21,11 +21,12 @@
     
       <h2>🐔 Chicken Road</h2>    
     
-      <div v-if="!started" class="bet-box">    
-        <input type="number" v-model.number="bet" placeholder="مبلغ الرهان USDT" />    
-        <button @click="startChicken">ابدأ</button>    
+      <!-- شكل الدجاج الكامل -->    
+      <div class="chicken-container">    
+        <div class="chicken">🐔</div>    
       </div>    
     
+      <!-- الطريق مع المضاعفات -->    
       <div v-if="started" class="road">    
         <div    
           v-for="(step,i) in steps"    
@@ -34,14 +35,39 @@
           :class="{active:i===position}"    
         >    
           x{{ step.multiplier.toFixed(2) }}    
-          <div v-if="i===position" class="icon">🐔</div>    
+          <div v-if="i===position" class="chicken-icon">🐔</div>    
         </div>    
       </div>    
     
+      <!-- حقل الرهان وزر ابدأ الآن في الأسفل -->    
+      <div class="chicken-bet-controls">    
+        <div v-if="!started" class="bet-input-group">    
+          <div class="input-wrapper">    
+            <input 
+              type="number" 
+              v-model.number="bet" 
+              placeholder="USDT" 
+              class="small-input" 
+              @input="clearChickenError"
+            />    
+            <div v-if="chickenErrorMessage" class="error-message">{{ chickenErrorMessage }}</div>    
+          </div>    
+          <button 
+            @click="validateAndStartChicken"
+            class="start-button"
+          >  
+            ابدأ الآن  
+          </button>    
+        </div>    
+      </div>    
+    
+      <!-- عناصر التحكم أثناء اللعبة -->    
       <div v-if="started" class="controls">    
         <div class="profit">الربح: {{ currentProfit.toFixed(2) }} USDT</div>    
-        <button @click="goNext">تقدم</button>    
-        <button @click="cashOutChicken">سحب</button>    
+        <div class="action-buttons">    
+          <button @click="goNext" class="action-btn">تقدم</button>    
+          <button @click="cashOutChicken" class="action-btn">سحب</button>    
+        </div>    
       </div>    
     </div>    
     
@@ -124,6 +150,7 @@ export default {
       balance: 0,    
       result: "",    
       errorMessage: "",    
+      chickenErrorMessage: "",    
     
       /* ===== Chicken Road ===== */    
       bet: null,    
@@ -174,12 +201,26 @@ export default {
       this.ball.active = false;    
       this.game = g;    
       this.errorMessage = "";    
+      this.chickenErrorMessage = "";    
     },    
     
     /* ===== Chicken Road ===== */    
-    async startChicken() {    
-      if (!this.bet || this.bet <= 0 || this.bet > this.balance) return;    
+    validateAndStartChicken() {    
+      if (!this.bet || this.bet <= 0) {    
+        this.chickenErrorMessage = "ادخل مبلغ الرهان";    
+        return;    
+      }    
+      
+      if (this.bet > this.balance) {    
+        this.chickenErrorMessage = "الرصيد غير كافي";    
+        return;    
+      }    
+      
+      this.chickenErrorMessage = "";    
+      this.startChicken();    
+    },    
     
+    async startChicken() {    
       this.balance -= this.bet;    
       await updateDoc(doc(db, "users", auth.currentUser.uid), {    
         balance: this.balance,    
@@ -214,6 +255,10 @@ export default {
     
       this.result = `🎉 ربحت ${profit.toFixed(2)} USDT`;    
       this.started = false;    
+    },    
+    
+    clearChickenError() {    
+      this.chickenErrorMessage = "";    
     },    
     
     /* ===== Plinko ===== */    
@@ -315,25 +360,103 @@ export default {
   margin: auto;    
 }    
     
+/* ============ Chicken Road Styles ============ */    
+.chicken-container {    
+  margin: 20px auto;    
+  display: flex;    
+  justify-content: center;    
+  align-items: center;    
+}    
+    
+.chicken {    
+  font-size: 80px;    
+  animation: bounce 2s infinite;    
+}    
+    
+@keyframes bounce {    
+  0%, 100% { transform: translateY(0); }    
+  50% { transform: translateY(-10px); }    
+}    
+    
 .road {    
   display: flex;    
   justify-content: space-between;    
-  margin: 15px 0;    
+  margin: 20px 0;    
+  background: rgba(30, 41, 59, 0.5);    
+  padding: 15px;    
+  border-radius: 12px;    
 }    
     
 .step {    
   width: 13%;    
   background: #1e293b;    
   border-radius: 10px;    
-  padding: 6px;    
-  font-size: 13px;    
+  padding: 10px 0;    
+  font-size: 14px;    
+  position: relative;    
+  min-height: 60px;    
+  display: flex;    
+  flex-direction: column;    
+  justify-content: center;    
+  align-items: center;    
 }    
     
 .step.active {    
   background: #22c55e;    
   color: black;    
+  font-weight: bold;    
 }    
     
+.chicken-icon {    
+  font-size: 24px;    
+  margin-top: 5px;    
+}    
+    
+.chicken-bet-controls {    
+  margin-top: 20px;    
+  padding-top: 15px;    
+  border-top: 1px solid #1e293b;    
+}    
+    
+.controls {    
+  margin-top: 20px;    
+  padding-top: 15px;    
+  border-top: 1px solid #1e293b;    
+}    
+    
+.profit {    
+  font-size: 18px;    
+  font-weight: bold;    
+  color: #22c55e;    
+  margin-bottom: 15px;    
+}    
+    
+.action-buttons {    
+  display: flex;    
+  justify-content: center;    
+  gap: 15px;    
+}    
+    
+.action-btn {    
+  padding: 10px 25px;    
+  border-radius: 20px;    
+  background: #1e293b;    
+  color: white;    
+  border: none;    
+  font-weight: bold;    
+  font-size: 14px;    
+  cursor: pointer;    
+  transition: all 0.2s;    
+  min-width: 100px;    
+}    
+    
+.action-btn:hover {    
+  background: #22c55e;    
+  color: black;    
+  transform: scale(1.05);    
+}    
+    
+/* ============ Plinko Styles ============ */    
 .plinko-container {    
   position: relative;    
   margin: 15px auto 15px auto;    
@@ -421,7 +544,7 @@ export default {
   color: black;    
 }    
     
-/* عناصر التحكم في الرهان */    
+/* ============ Common Controls Styles ============ */    
 .plinko-bet-controls {    
   margin-top: 20px;    
   padding-top: 15px;    
