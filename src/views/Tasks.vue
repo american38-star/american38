@@ -355,18 +355,18 @@ export default {
   align-items: center;    
   margin-top: -8px;    
   padding-top: 0;    
-  gap: 0.5px;    
+  gap: 1px;    
 }    
     
 .multiplier-item {    
-  padding: 0px 2px;    
-  border-radius: 1px;    
+  padding: 2px 4px;    
+  border-radius: 3px;    
   font-weight: bold;    
-  font-size: 8px;    
-  min-width: 24px;    
+  font-size: 10px;    
+  min-width: 28px;    
   text-align: center;    
   line-height: 1;    
-  height: 14px;    
+  height: 18px;    
   display: flex;    
   align-items: center;    
   justify-content: center;    
