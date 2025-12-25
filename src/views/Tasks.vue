@@ -310,51 +310,64 @@ export default {
       // إحداثيات X النهائية لكل مضاعف بدقة  
       const finalX = this.getMultiplierPosition(multiplierIndex);  
       
-      // محاكاة واقعية لحركة الكرة في Plinko  
-      let rowIndex = 0;  
-      let currentX = 150;  
-      let currentY = 0;  
+      console.log(`المضاعف المختار: x${multiplier} (مؤشر: ${multiplierIndex})`);  
+      console.log(`الموضع النهائي المستهدف: ${finalX}px`);  
       
-      // حساب المسار نحو الهدف النهائي  
-      const totalRows = this.rows.length;  
-      const targetXPerRow = [];  
-      
-      // إنشاء مسار يتجه نحو الهدف النهائي  
-      for (let i = 0; i < totalRows; i++) {  
-        const progress = i / (totalRows - 1);  
-        // حركة تتبع الهدف مع بعض العشوائية الطبيعية  
-        const randomOffset = (Math.random() - 0.5) * 20 * (1 - progress);  
-        targetXPerRow[i] = 150 + (finalX - 150) * progress + randomOffset;  
-      }  
+      // حركة الكرة مع الوصول المؤكد إلى الهدف  
+      let currentStep = 0;  
+      const totalSteps = 35; // زيادة الخطوات للتأكد من الوصول للأسفل  
+      const startX = 150;  
+      const startY = 0;  
+      const finalY = 280; // زيادة النهاية للتأكد من الوصول  
       
       this.dropInterval = setInterval(async () => {    
-        if (rowIndex < totalRows) {  
-          currentY = rowIndex * 30; // تباعد أكبر بين الصفوف  
-          currentX = targetXPerRow[rowIndex];  
-          
-          this.ball.y = currentY;  
-          this.ball.x = currentX;  
-          
-          rowIndex++;  
+        currentStep++;  
+        
+        // حساب التقدم  
+        const progress = Math.min(currentStep / totalSteps, 1);  
+        
+        // حركة Y - نزول إلى الأسفل بالتأكيد  
+        this.ball.y = startY + (finalY - startY) * progress;  
+        
+        // حركة X - تتبع الهدف النهائي  
+        // في النصف الأول: حركة عشوائية طبيعية  
+        // في النصف الثاني: توجيه نحو الهدف  
+        if (progress < 0.7) {  
+          // حركة عشوائية في البداية  
+          this.ball.x = startX + (Math.random() - 0.5) * 100 * (1 - progress);  
         } else {  
-          // النهاية - التأكد من أن الكرة في الموضع الصحيح  
+          // توجيه نحو الهدف النهائي  
+          const targetProgress = (progress - 0.7) / 0.3;  
+          this.ball.x = startX + (finalX - startX) * targetProgress;  
+        }  
+        
+        // تأمين الكرة ضمن الحدود  
+        this.ball.x = Math.max(20, Math.min(380, this.ball.x));  
+        
+        // عند الوصول للنهاية  
+        if (progress >= 1) {  
           clearInterval(this.dropInterval);  
-          this.ball.active = false;  
-          this.ball.y = 260;  
-          this.ball.x = finalX;  
           
-          // حساب الربح بناءً على المضاعف المحدد مسبقاً    
-          const win = this.plinkoBet * multiplier;    
-          this.balance += win;    
+          // التأكد من أن الكرة في الموضع النهائي الصحيح  
+          this.ball.x = finalX;  
+          this.ball.y = finalY;  
+          this.ball.active = false;  
+          
+          // تأخير بسيط قبل عرض النتيجة  
+          setTimeout(async () => {  
+            // حساب الربح بناءً على المضاعف المحدد مسبقاً    
+            const win = this.plinkoBet * multiplier;    
+            this.balance += win;    
   
-          await updateDoc(doc(db, "users", auth.currentUser.uid), {    
-            balance: this.balance,    
-          });    
+            await updateDoc(doc(db, "users", auth.currentUser.uid), {    
+              balance: this.balance,    
+            });    
   
-          this.result = `🎯 ربحت ${win.toFixed(2)} USDT (x${multiplier})`;  
-          console.log(`الكرة نزلت على: x${multiplier} في الموضع ${finalX}px`);  
+            this.result = `🎯 ربحت ${win.toFixed(2)} USDT (x${multiplier})`;  
+            console.log(`✅ الكرة وصلت إلى: x${multiplier} في الموضع ${this.ball.x}px`);  
+          }, 300);  
         }    
-      }, 80); // إبطاء الحركة لترى بشكل أفضل    
+      }, 60); // سرعة معتدلة  
     },    
     
     // حساب المضاعف النهائي بناءً على الاحتمالات    
@@ -379,7 +392,7 @@ export default {
     getMultiplierPosition(index) {    
       // إحداثيات X للمضاعفات من اليسار إلى اليمين  
       // تم تعديلها لتتناسب مع العرض الحالي  
-      const positions = [25, 70, 115, 160, 205, 250, 295, 340, 385];    
+      const positions = [40, 85, 130, 175, 220, 265, 310, 355, 400];    
       return positions[index];    
     },    
     
@@ -536,13 +549,13 @@ export default {
     
 .plinko-board {    
   position: relative;    
-  height: 320px; /* زيادة الارتفاع للمسار الأطول */    
+  height: 320px; /* زيادة الارتفاع */    
 }    
     
 .row {    
   display: flex;    
   justify-content: center;    
-  margin: 10px 0; /* زيادة المسافة بين الصفوف */    
+  margin: 10px 0;    
 }    
     
 .dot {    
@@ -563,16 +576,16 @@ export default {
   left: 50%;    
   transform: translateX(-50%);    
   z-index: 10;    
-  transition: left 0.08s linear; /* إضافة transition لحركة سلسة */    
+  transition: left 0.1s linear, top 0.1s linear; /* تحسين الحركة */    
 }    
     
 .multipliers-row {    
   display: flex;    
   justify-content: center;    
   align-items: center;    
-  margin-top: -10px;    
+  margin-top: 10px; /* زيادة المسافة */    
   padding-top: 0;    
-  gap: 0.8px;    
+  gap: 2px; /* زيادة المسافة بين المضاعفات */    
 }    
     
 .multiplier-item {    
