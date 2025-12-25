@@ -50,12 +50,7 @@
     
       <h2>🔴 Plinko</h2>    
     
-      <div class="bet-box">    
-        <input type="number" v-model.number="plinkoBet" placeholder="مبلغ الرهان USDT" />    
-        <button :disabled="ball.active" @click="startPlinko">PLAY</button>    
-      </div>    
-    
-      <!-- اللوحة والمضاعفات -->    
+      <!-- اللوحة والمضاعفات في الأعلى -->    
       <div class="plinko-container">    
         <!-- اللوحة -->    
         <div class="plinko-board">    
@@ -86,6 +81,25 @@
           class="ball"    
           :style="{ top: ball.y+'px', left: ball.x+'px' }"    
         ></div>    
+      </div>    
+    
+      <!-- حقل الرهان وزر ابدأ الآن في الأسفل -->    
+      <div class="plinko-bet-controls">    
+        <div class="bet-input-group">    
+          <input 
+            type="number" 
+            v-model.number="plinkoBet" 
+            placeholder="USDT" 
+            class="small-input" 
+          />    
+          <button 
+            :disabled="ball.active" 
+            @click="startPlinko"
+            class="start-button"
+          >  
+            ابدأ الآن  
+          </button>    
+        </div>    
       </div>    
     </div>    
     
@@ -301,7 +315,7 @@ export default {
     
 .plinko-container {    
   position: relative;    
-  margin: 15px auto 0 auto;    
+  margin: 15px auto 15px auto;    
 }    
     
 .plinko-board {    
@@ -384,6 +398,58 @@ export default {
 .multipliers-row .multiplier-item:nth-child(5) {    
   background: #facc15; /* أصفر */    
   color: black;    
+}    
+    
+/* عناصر التحكم في الرهان */    
+.plinko-bet-controls {    
+  margin-top: 20px;    
+  padding-top: 15px;    
+  border-top: 1px solid #1e293b;    
+}    
+    
+.bet-input-group {    
+  display: flex;    
+  justify-content: center;    
+  gap: 10px;    
+  align-items: center;    
+}    
+    
+.small-input {    
+  width: 100px;    
+  padding: 8px 12px;    
+  border-radius: 20px;    
+  background: #1e293b;    
+  color: white;    
+  border: 1px solid #374151;    
+  font-size: 14px;    
+  text-align: center;    
+}    
+    
+.small-input::placeholder {    
+  color: #94a3b8;    
+}    
+    
+.start-button {    
+  padding: 8px 20px;    
+  border-radius: 20px;    
+  background: linear-gradient(135deg, #22c55e, #16a34a);    
+  color: black;    
+  border: none;    
+  font-weight: bold;    
+  font-size: 14px;    
+  cursor: pointer;    
+  transition: all 0.2s;    
+}    
+    
+.start-button:disabled {    
+  background: #4b5563;    
+  color: #9ca3af;    
+  cursor: not-allowed;    
+}    
+    
+.start-button:not(:disabled):hover {    
+  background: linear-gradient(135deg, #16a34a, #15803d);    
+  transform: scale(1.05);    
 }    
     
 .result {    
