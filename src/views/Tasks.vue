@@ -86,15 +86,18 @@
       <!-- حقل الرهان وزر ابدأ الآن في الأسفل -->    
       <div class="plinko-bet-controls">    
         <div class="bet-input-group">    
-          <input 
-            type="number" 
-            v-model.number="plinkoBet" 
-            placeholder="USDT" 
-            class="small-input" 
-          />    
+          <div class="input-wrapper">    
+            <input 
+              type="number" 
+              v-model.number="plinkoBet" 
+              placeholder="USDT" 
+              class="small-input" 
+              @input="clearError"
+            />    
+            <div v-if="errorMessage" class="error-message">{{ errorMessage }}</div>    
+          </div>    
           <button 
-            :disabled="ball.active" 
-            @click="startPlinko"
+            @click="validateAndStart"
             class="start-button"
           >  
             ابدأ الآن  
@@ -120,6 +123,7 @@ export default {
       game: "chicken",    
       balance: 0,    
       result: "",    
+      errorMessage: "",    
     
       /* ===== Chicken Road ===== */    
       bet: null,    
@@ -169,6 +173,7 @@ export default {
       this.started = false;    
       this.ball.active = false;    
       this.game = g;    
+      this.errorMessage = "";    
     },    
     
     /* ===== Chicken Road ===== */    
@@ -212,10 +217,22 @@ export default {
     },    
     
     /* ===== Plinko ===== */    
-    async startPlinko() {    
-      if (!this.plinkoBet || this.plinkoBet <= 0 || this.plinkoBet > this.balance)    
+    validateAndStart() {    
+      if (!this.plinkoBet || this.plinkoBet <= 0) {    
+        this.errorMessage = "ادخل مبلغ الرهان";    
         return;    
+      }    
+      
+      if (this.plinkoBet > this.balance) {    
+        this.errorMessage = "الرصيد غير كافي";    
+        return;    
+      }    
+      
+      this.errorMessage = "";    
+      this.startPlinko();    
+    },    
     
+    async startPlinko() {    
       this.balance -= this.plinkoBet;    
       await updateDoc(doc(db, "users", auth.currentUser.uid), {    
         balance: this.balance,    
@@ -247,6 +264,10 @@ export default {
           this.result = `🎯 ربحت ${win.toFixed(2)} USDT`;    
         }    
       }, 40);    
+    },    
+    
+    clearError() {    
+      this.errorMessage = "";    
     },    
     
     multiplierClass(m) {    
@@ -414,6 +435,10 @@ export default {
   align-items: center;    
 }    
     
+.input-wrapper {    
+  position: relative;    
+}    
+    
 .small-input {    
   width: 100px;    
   padding: 8px 12px;    
@@ -425,8 +450,28 @@ export default {
   text-align: center;    
 }    
     
+.small-input:focus {    
+  outline: none;    
+  border-color: #22c55e;    
+}    
+    
 .small-input::placeholder {    
   color: #94a3b8;    
+}    
+    
+.error-message {    
+  position: absolute;    
+  top: 100%;    
+  left: 50%;    
+  transform: translateX(-50%);    
+  color: #ef4444;    
+  font-size: 11px;    
+  margin-top: 4px;    
+  white-space: nowrap;    
+  background: rgba(220, 38, 38, 0.1);    
+  padding: 2px 6px;    
+  border-radius: 4px;    
+  border: 1px solid #ef4444;    
 }    
     
 .start-button {    
@@ -441,13 +486,7 @@ export default {
   transition: all 0.2s;    
 }    
     
-.start-button:disabled {    
-  background: #4b5563;    
-  color: #9ca3af;    
-  cursor: not-allowed;    
-}    
-    
-.start-button:not(:disabled):hover {    
+.start-button:hover {    
   background: linear-gradient(135deg, #16a34a, #15803d);    
   transform: scale(1.05);    
 }    
