@@ -359,7 +359,7 @@ export default {
 }    
     
 .multiplier-item {    
-  padding: 1px 2px;    
+  padding: 1px 3px;    
   border-radius: 2px;    
   font-weight: bold;    
   font-size: 9px;    
