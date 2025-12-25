@@ -363,7 +363,7 @@ export default {
   border-radius: 2px;    
   font-weight: bold;    
   font-size: 9px;    
-  min-width: 23px;    
+  min-width: 24px;    
   text-align: center;    
   line-height: 1;    
   height: 15px;    
