@@ -102,10 +102,12 @@
           <div class="multiplier-item" style="min-width: 25px;">x29</div>    
         </div>    
     
+        <!-- عرض عدة كرات -->    
         <div    
-          v-if="ball.active"    
+          v-for="(ball, index) in activeBalls"    
+          :key="index"    
           class="ball"    
-          :style="{ top: ball.y+'px', left: ball.x+'px' }"    
+          :style="{ top: ball.y+'px', left: ball.x+'px', 'background-color': ball.color }"    
         ></div>    
       </div>    
     
@@ -125,9 +127,14 @@
           <button 
             @click="validateAndStart"
             class="start-button"
+            :disabled="isProcessing"
           >  
-            ابدأ الآن  
+            <span v-if="isProcessing">جاري المعالجة...</span>  
+            <span v-else>ابدأ الآن</span>  
           </button>    
+        </div>    
+        <div class="queue-info" v-if="ballQueue.length > 0">  
+          قائمة الانتظار: {{ ballQueue.length }} كرات  
         </div>    
       </div>    
     </div>    
@@ -151,6 +158,9 @@ export default {
       result: "",    
       errorMessage: "",    
       chickenErrorMessage: "",    
+      isProcessing: false, // هل تتم معالجة كرة حالياً  
+      ballQueue: [], // قائمة انتظار للكرات  
+      processedBalls: 0, // عدد الكرات المعالجة  
     
       /* ===== Chicken Road ===== */    
       bet: null,    
@@ -170,15 +180,18 @@ export default {
       plinkoBet: null,    
       rows: [3,4,5,6,7,8,9,10],    
       plinkoMultipliers: [29, 4, 1.5, 0.3, 0.2, 0.3, 1.5, 4, 29],    
-      ball: {    
-        x: 150,    
-        y: 0,    
-        active: false,    
-      },    
-      // لتخزين المضاعف الذي وقعت عليه الكرة    
-      finalMultiplier: null,    
-      finalMultiplierIndex: null,    
-      dropInterval: null,    
+      activeBalls: [], // مصفوفة للكرات النشطة  
+      ballCounter: 0, // عداد للكرات  
+      
+      // ألوان مختلفة للكرات  
+      ballColors: [    
+        '#ff2d55', // أحمر  
+        '#4cd964', // أخضر  
+        '#5ac8fa', // أزرق  
+        '#ff9500', // برتقالي  
+        '#ffcc00', // أصفر  
+        '#8e8e93', // رمادي  
+      ],  
     };    
   },    
     
@@ -202,16 +215,13 @@ export default {
     switchGame(g) {    
       this.result = "";    
       this.started = false;    
-      this.ball.active = false;    
+      this.activeBalls = [];  
+      this.ballQueue = [];  
+      this.isProcessing = false;  
+      this.processedBalls = 0;  
       this.game = g;    
       this.errorMessage = "";    
       this.chickenErrorMessage = "";    
-      this.finalMultiplier = null;    
-      this.finalMultiplierIndex = null;    
-      if (this.dropInterval) {    
-        clearInterval(this.dropInterval);    
-        this.dropInterval = null;    
-      }    
     },    
     
     /* ===== Chicken Road ===== */    
@@ -283,92 +293,158 @@ export default {
         return;    
       }    
       
-      this.errorMessage = "";    
-      this.startPlinko();    
-    },    
+      this.errorMessage = "";  
+      
+      // خصم المبلغ مرة واحدة فقط  
+      this.processPlinkoGame();  
+    },  
     
-    async startPlinko() {    
+    async processPlinkoGame() {  
+      this.isProcessing = true;  
+      
+      // خصم المبلغ من الرصيد  
       this.balance -= this.plinkoBet;    
       await updateDoc(doc(db, "users", auth.currentUser.uid), {    
         balance: this.balance,    
       });    
+      
+      // إضافة كرة إلى قائمة الانتظار  
+      this.ballQueue.push({  
+        id: Date.now() + Math.random(),  
+        bet: this.plinkoBet,  
+      });  
+      
+      // بدء معالجة الكرات إذا لم تكن هناك معالجة حالية  
+      if (!this.isProcessing) {  
+        this.processNextBall();  
+      }  
+    },  
     
-      this.ball = { x: 150, y: 0, active: true };    
-      this.finalMultiplier = null;    
-      this.finalMultiplierIndex = null;    
-      this.result = "";    
-      this.dropBall();    
-    },    
+    processNextBall() {  
+      if (this.ballQueue.length === 0) {  
+        this.isProcessing = false;  
+        return;  
+      }  
+      
+      this.isProcessing = true;  
+      const nextBall = this.ballQueue.shift();  
+      this.startPlinkoBall(nextBall);  
+    },  
     
-    dropBall() {    
+    async startPlinkoBall(ballData) {    
       // حساب المضاعف النهائي مسبقاً قبل تحريك الكرة    
       const multiplierIndex = this.calculateFinalMultiplierIndex();    
       const multiplier = this.plinkoMultipliers[multiplierIndex];    
-      this.finalMultiplier = multiplier;    
-      this.finalMultiplierIndex = multiplierIndex;    
       
       // إحداثيات X النهائية لكل مضاعف بدقة  
       const finalX = this.getMultiplierPosition(multiplierIndex);  
       
-      console.log(`المضاعف المختار: x${multiplier} (مؤشر: ${multiplierIndex})`);  
-      console.log(`الموضع النهائي المستهدف: ${finalX}px`);  
+      // إنشاء كرة جديدة  
+      const ballId = ++this.ballCounter;  
+      const colorIndex = (ballId - 1) % this.ballColors.length;  
       
-      // حركة الكرة مع الوصول المؤكد إلى الهدف  
+      const newBall = {  
+        id: ballId,  
+        x: 150,  
+        y: 0,  
+        active: true,  
+        color: this.ballColors[colorIndex],  
+        finalX: finalX,  
+        multiplier: multiplier,  
+        bet: ballData.bet,  
+      };  
+      
+      this.activeBalls.push(newBall);  
+      
+      // بدء حركة الكرة ببطء  
+      this.dropBall(newBall);  
+    },  
+    
+    dropBall(ball) {    
+      console.log(`بدأت الكرة ${ball.id} - المضاعف المختار: x${ball.multiplier}`);  
+      
       let currentStep = 0;  
-      const totalSteps = 35; // زيادة الخطوات للتأكد من الوصول للأسفل  
+      const totalSteps = 60; // زيادة الخطوات لجعل الحركة أبطأ  
       const startX = 150;  
       const startY = 0;  
-      const finalY = 280; // زيادة النهاية للتأكد من الوصول  
+      const finalY = 280;  
       
-      this.dropInterval = setInterval(async () => {    
+      const interval = setInterval(async () => {    
         currentStep++;  
         
         // حساب التقدم  
         const progress = Math.min(currentStep / totalSteps, 1);  
         
-        // حركة Y - نزول إلى الأسفل بالتأكيد  
-        this.ball.y = startY + (finalY - startY) * progress;  
+        // حركة Y - نزول إلى الأسفل  
+        ball.y = startY + (finalY - startY) * progress;  
         
         // حركة X - تتبع الهدف النهائي  
         // في النصف الأول: حركة عشوائية طبيعية  
         // في النصف الثاني: توجيه نحو الهدف  
-        if (progress < 0.7) {  
+        if (progress < 0.6) {  
           // حركة عشوائية في البداية  
-          this.ball.x = startX + (Math.random() - 0.5) * 100 * (1 - progress);  
+          const randomFactor = Math.sin(progress * Math.PI) * 80;  
+          ball.x = startX + (Math.random() - 0.5) * randomFactor;  
         } else {  
           // توجيه نحو الهدف النهائي  
-          const targetProgress = (progress - 0.7) / 0.3;  
-          this.ball.x = startX + (finalX - startX) * targetProgress;  
+          const targetProgress = (progress - 0.6) / 0.4;  
+          const easeProgress = this.easeInOutCubic(targetProgress);  
+          ball.x = startX + (ball.finalX - startX) * easeProgress;  
         }  
         
-        // تأمين الكرة ضمن الحدود  
-        this.ball.x = Math.max(20, Math.min(380, this.ball.x));  
+        // تحديث موقع الكرة في المصفوفة  
+        const ballIndex = this.activeBalls.findIndex(b => b.id === ball.id);  
+        if (ballIndex !== -1) {  
+          this.activeBalls[ballIndex].x = ball.x;  
+          this.activeBalls[ballIndex].y = ball.y;  
+        }  
         
         // عند الوصول للنهاية  
         if (progress >= 1) {  
-          clearInterval(this.dropInterval);  
+          clearInterval(interval);  
           
           // التأكد من أن الكرة في الموضع النهائي الصحيح  
-          this.ball.x = finalX;  
-          this.ball.y = finalY;  
-          this.ball.active = false;  
+          ball.x = ball.finalX;  
+          ball.y = finalY;  
+          
+          // تحديث الموقع النهائي  
+          if (ballIndex !== -1) {  
+            this.activeBalls[ballIndex].x = ball.finalX;  
+            this.activeBalls[ballIndex].y = finalY;  
+          }  
           
           // تأخير بسيط قبل عرض النتيجة  
           setTimeout(async () => {  
-            // حساب الربح بناءً على المضاعف المحدد مسبقاً    
-            const win = this.plinkoBet * multiplier;    
+            // حساب الربح  
+            const win = ball.bet * ball.multiplier;    
             this.balance += win;    
   
             await updateDoc(doc(db, "users", auth.currentUser.uid), {    
               balance: this.balance,    
             });    
   
-            this.result = `🎯 ربحت ${win.toFixed(2)} USDT (x${multiplier})`;  
-            console.log(`✅ الكرة وصلت إلى: x${multiplier} في الموضع ${this.ball.x}px`);  
-          }, 300);  
+            this.result = `🎯 ربحت ${win.toFixed(2)} USDT (x${ball.multiplier})`;  
+            console.log(`✅ الكرة ${ball.id} وصلت إلى: x${ball.multiplier}`);  
+            
+            // زيادة عدد الكرات المعالجة  
+            this.processedBalls++;  
+            
+            // إزالة الكرة بعد تأخير  
+            setTimeout(() => {  
+              this.activeBalls = this.activeBalls.filter(b => b.id !== ball.id);  
+              
+              // معالجة الكرة التالية  
+              this.processNextBall();  
+            }, 1000); // انتظار ثانية قبل إزالة الكرة  
+          }, 500);  
         }    
-      }, 60); // سرعة معتدلة  
-    },    
+      }, 100); // جعل الفاصل 100ms لجعل الحركة أبطأ  
+    },  
+    
+    // دالة لتسهيل الحركة  
+    easeInOutCubic(t) {  
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;  
+    },  
     
     // حساب المضاعف النهائي بناءً على الاحتمالات    
     calculateFinalMultiplierIndex() {    
@@ -391,7 +467,6 @@ export default {
     // الحصول على موضع المضاعف بدقة  
     getMultiplierPosition(index) {    
       // إحداثيات X للمضاعفات من اليسار إلى اليمين  
-      // تم تعديلها لتتناسب مع العرض الحالي  
       const positions = [40, 85, 130, 175, 220, 265, 310, 355, 400];    
       return positions[index];    
     },    
@@ -576,7 +651,8 @@ export default {
   left: 50%;    
   transform: translateX(-50%);    
   z-index: 10;    
-  transition: left 0.1s linear, top 0.1s linear; /* تحسين الحركة */    
+  transition: left 0.2s ease-out, top 0.2s ease-out; /* جعل الحركة أبطأ وأكثر سلاسة */    
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3); /* إضافة ظل للكرة */    
 }    
     
 .multipliers-row {    
@@ -693,12 +769,26 @@ export default {
   font-size: 14px;    
   cursor: pointer;    
   transition: all 0.2s;    
+  min-width: 100px;    
 }    
     
-.start-button:hover {    
+.start-button:disabled {    
+  background: #4b5563;    
+  color: #9ca3af;    
+  cursor: not-allowed;    
+  transform: none;    
+}    
+    
+.start-button:hover:not(:disabled) {    
   background: linear-gradient(135deg, #16a34a, #15803d);    
   transform: scale(1.05);    
 }    
+    
+.queue-info {  
+  margin-top: 10px;  
+  font-size: 12px;  
+  color: #94a3b8;  
+}  
     
 .result {    
   margin-top: 15px;    
