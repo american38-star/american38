@@ -336,7 +336,7 @@ export default {
       const totalSteps = 40;  
       const startX = 150;  
       const startY = 0;  
-      const finalY = 260; // رفع النهاية قليلاً  
+      const finalY = 260;  
       const finalX = ball.finalX;
       
       // حفظ الـ interval
@@ -362,7 +362,7 @@ export default {
         }  
         
         // تأمين الكرة ضمن الحدود  
-        ball.x = Math.max(25, Math.min(375, ball.x));  
+        ball.x = Math.max(30, Math.min(370, ball.x));  
         
         // عند الوصول  
         if (progress >= 1) {  
@@ -416,8 +416,8 @@ export default {
     
     // الحصول على موضع المضاعف بدقة  
     getMultiplierPosition(index) {    
-      // المواقع المحددة بناءً على العرض 420px - أقرب من بعض  
-      const positions = [35, 78, 121, 164, 207, 250, 293, 336, 379];    
+      // المواقع المحددة بناءً على العرض 420px - متقاربة جداً  
+      const positions = [35, 77, 119, 161, 203, 245, 287, 329, 371];    
       return positions[index];    
     },    
     
@@ -574,27 +574,27 @@ export default {
     
 .plinko-board {    
   position: relative;    
-  height: 300px; /* تقليل الارتفاع */    
+  height: 320px; /* إرجاع الارتفاع الأصلي */    
 }    
     
 .row {    
   display: flex;    
   justify-content: center;    
-  margin: 8px 0; /* تقليل المسافة بين الصفوف */    
+  margin: 10px 0; /* إرجاع المسافة الأصلية */    
 }    
     
 .dot {    
-  width: 8px; /* تصغير النقاط */    
-  height: 8px;    
+  width: 9px; /* إرجاع الحجم الأصلي */    
+  height: 9px;    
   background: white;    
   border-radius: 50%;    
-  margin: 8px 8px; /* تقليل المسافة بين النقاط */    
+  margin: 9px 10px; /* إرجاع المسافة الأصلية */    
 }    
     
 .ball {    
   position: absolute;    
-  width: 12px; /* تصغير الكرات قليلاً */    
-  height: 12px;    
+  width: 14px; /* إرجاع الحجم الأصلي */    
+  height: 14px;    
   background: #ff2d55;    
   border-radius: 50%;    
   top: 0;    
@@ -606,28 +606,25 @@ export default {
     
 .multipliers-row {    
   display: flex;    
-  justify-content: space-between; /* توزيع متساوٍ */    
+  justify-content: center;    
   align-items: center;    
-  margin-top: 5px; /* رفع المضاعفات للأعلى */    
-  margin-bottom: 10px;    
-  padding: 0 5px; /* تقليل الهوامش */    
-  width: 100%;    
+  margin-top: 15px; /* نفس المسافة */    
+  padding-top: 0;    
+  gap: 1px; /* تقريب جداً من بعضها */    
 }    
     
 .multiplier-item {    
-  padding: 2px 4px; /* تقليل الحشو */    
-  border-radius: 3px;    
+  padding: 1px 2px; /* تقليل الحشو */    
+  border-radius: 2px;    
   font-weight: bold;    
-  font-size: 10px; /* تصغير الخط قليلاً */    
-  min-width: 28px; /* تقليل العرض */    
+  font-size: 9px; /* نفس حجم الخط */    
+  min-width: 24px; /* نفس العرض */    
   text-align: center;    
   line-height: 1;    
-  height: 18px; /* تقليل الارتفاع */    
+  height: 15px; /* نفس الارتفاع */    
   display: flex;    
   align-items: center;    
   justify-content: center;    
-  margin: 0 1px; /* تقليل المسافة بين العناصر */    
-  flex: 1; /* جعل العناصر تتوسع بالتساوي */    
 }    
     
 .multipliers-row .multiplier-item:nth-child(1),    
