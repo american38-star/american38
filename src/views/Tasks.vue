@@ -91,7 +91,7 @@
     
         <!-- المضاعفات تحت آخر صف نقاط مباشرة -->    
         <div class="multipliers-row">    
-          <div class="multiplier-item">x29</div>    
+          <div class="multiplier-item" style="min-width: 25px;">x29</div>    
           <div class="multiplier-item">x4</div>    
           <div class="multiplier-item">x1.5</div>    
           <div class="multiplier-item">x0.3</div>    
@@ -99,7 +99,7 @@
           <div class="multiplier-item">x0.3</div>    
           <div class="multiplier-item">x1.5</div>    
           <div class="multiplier-item">x4</div>    
-          <div class="multiplier-item">x29</div>    
+          <div class="multiplier-item" style="min-width: 25px;">x29</div>    
         </div>    
     
         <!-- عرض جميع الكرات النشطة -->
@@ -336,7 +336,7 @@ export default {
       const totalSteps = 40;  
       const startX = 150;  
       const startY = 0;  
-      const finalY = 260;  
+      const finalY = 280;  
       const finalX = ball.finalX;
       
       // حفظ الـ interval
@@ -362,7 +362,7 @@ export default {
         }  
         
         // تأمين الكرة ضمن الحدود  
-        ball.x = Math.max(35, Math.min(385, ball.x));  
+        ball.x = Math.max(30, Math.min(370, ball.x));  
         
         // عند الوصول  
         if (progress >= 1) {  
@@ -416,8 +416,8 @@ export default {
     
     // الحصول على موضع المضاعف بدقة  
     getMultiplierPosition(index) {    
-      // مواضع المضاعفات - 43.5px بين كل مضاعف  
-      const positions = [40, 83.5, 127, 170.5, 214, 257.5, 301, 344.5, 388];    
+      // المواقع المحددة بناءً على العرض 420px  
+      const positions = [30, 75, 120, 165, 210, 255, 300, 345, 390];    
       return positions[index];    
     },    
     
@@ -606,29 +606,25 @@ export default {
     
 .multipliers-row {    
   display: flex;    
-  justify-content: space-between;    
+  justify-content: center;    
   align-items: center;    
-  margin-top: 15px;    
-  padding: 0;    
-  width: 100%;    
-  gap: 0;    
+  margin-top: 10px;    
+  padding-top: 0;    
+  gap: 5px;    
 }    
     
 .multiplier-item {    
-  padding: 2px 4px;    
-  border-radius: 3px;    
+  padding: 1px 3px;    
+  border-radius: 2px;    
   font-weight: bold;    
-  font-size: 10px;    
-  width: 38px; /* عرض مناسب لمسافة 43.5px */    
-  min-width: 38px;    
-  max-width: 38px;    
+  font-size: 9px;    
+  min-width: 24px;    
   text-align: center;    
   line-height: 1;    
-  height: 18px;    
+  height: 15px;    
   display: flex;    
   align-items: center;    
   justify-content: center;    
-  flex-shrink: 0;    
 }    
     
 .multipliers-row .multiplier-item:nth-child(1),    
