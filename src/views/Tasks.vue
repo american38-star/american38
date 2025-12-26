@@ -107,7 +107,13 @@
           v-for="(ball, index) in activeBalls"    
           :key="ball.id"    
           class="ball"    
-          :style="{ top: ball.y+'px', left: ball.x+'px', 'background-color': ball.color }"    
+          :style="{ 
+            top: ball.y+'px', 
+            left: ball.x+'px', 
+            'background-color': ball.color,
+            'transform': ball.held ? 'translate(-50%, 0) scale(1.2)' : 'translate(-50%, 0) scale(1)',
+            'z-index': ball.held ? 20 : 10
+          }"    
         ></div>    
       </div>    
     
@@ -288,7 +294,7 @@ export default {
       
       this.errorMessage = "";  
       
-      // بدء كرة جديدة مباشرة  
+      // بدء كرة جديدة  
       this.startPlinkoBall();  
     },  
     
@@ -306,58 +312,88 @@ export default {
       // إحداثيات X النهائية لكل مضاعف بدقة  
       const finalX = this.getMultiplierPosition(multiplierIndex);  
       
-      // إنشاء كرة جديدة  
+      // إنشاء كرة جديدة معلقة في الأعلى  
       const ballId = ++this.ballCounter;  
       const colorIndex = (ballId - 1) % this.ballColors.length;  
       
       const newBall = {  
         id: ballId,  
         x: 150,  
-        y: 0,  
+        y: -30, // تبدأ من فوق اللوحة  
         active: true,  
         color: this.ballColors[colorIndex],  
         finalX: finalX,  
         multiplier: multiplier,  
         bet: this.plinkoBet,  
         completed: false,  
+        held: true, // الكرة معلقة في البداية  
+        velocity: 0, // سرعة ابتدائية  
+        gravity: 0.5, // جاذبية واقعية  
+        bounce: 0.7, // مرونة الكرة  
       };  
       
       this.activeBalls.push(newBall);  
       
-      // بدء حركة الكرة مباشرة  
-      this.dropBall(newBall);  
+      // إسقاط الكرة بعد تأخير قصير  
+      setTimeout(() => {  
+        this.dropBallRealistic(newBall);  
+      }, 800); // تأخير 800ms لرؤية الكرة معلقة  
     },  
     
-    dropBall(ball) {    
-      console.log(`بدأت الكرة ${ball.id} - المضاعف المختار: x${ball.multiplier}`);  
+    dropBallRealistic(ball) {    
+      console.log(`أسقط الكرة ${ball.id} - المضاعف المختار: x${ball.multiplier}`);  
       
-      let currentStep = 0;  
-      const totalSteps = 50;  
-      const startX = 150;  
-      const startY = 0;  
-      const finalY = 280;  
+      // تحرير الكرة (تتوقف عن التعليق)  
+      ball.held = false;  
+      ball.velocity = 0;  
       
-      const interval = setInterval(async () => {    
-        currentStep++;  
+      let lastTime = Date.now();  
+      const startTime = Date.now();  
+      const maxFallTime = 5000; // أقصى وقت للسقوط (5 ثواني)  
+      
+      const animate = () => {  
+        if (ball.completed) return;  
         
-        // حساب التقدم  
-        const progress = Math.min(currentStep / totalSteps, 1);  
+        const currentTime = Date.now();  
+        const deltaTime = Math.min(currentTime - lastTime, 50); // الحد من deltaTime  
+        lastTime = currentTime;  
         
-        // حركة Y - نزول إلى الأسفل  
-        ball.y = startY + (finalY - startY) * progress;  
+        const elapsedTime = currentTime - startTime;  
         
-        // حركة X - تتبع الهدف النهائي  
-        // في النصف الأول: حركة عشوائية طبيعية  
-        // في النصف الثاني: توجيه نحو الهدف  
-        if (progress < 0.6) {  
-          // حركة عشوائية في البداية  
-          const randomFactor = Math.sin(progress * Math.PI) * 60;  
-          ball.x = startX + (Math.random() - 0.5) * randomFactor;  
+        // زيادة السرعة بسبب الجاذبية  
+        ball.velocity += ball.gravity * (deltaTime / 16);  
+        
+        // حركة Y - السقوط الحقيقي  
+        ball.y += ball.velocity;  
+        
+        // حركة X - تتبع الهدف النهائي مع حركة طبيعية  
+        const progressY = Math.min(ball.y / 280, 1); // التقدم في المحور Y  
+        
+        if (progressY < 0.7) {  
+          // في الجزء العلوي: حركة عشوائية طبيعية  
+          const sway = Math.sin(elapsedTime / 300 + ball.id) * 15;  
+          ball.x = 150 + sway;  
         } else {  
-          // توجيه نحو الهدف النهائي  
-          const targetProgress = (progress - 0.6) / 0.4;  
+          // في الجزء السفلي: توجيه نحو الهدف النهائي  
+          const targetProgress = (progressY - 0.7) / 0.3;  
           const easeProgress = this.easeInOutCubic(targetProgress);  
-          ball.x = startX + (ball.finalX - startX) * easeProgress;  
+          ball.x = 150 + (ball.finalX - 150) * easeProgress;  
+        }  
+        
+        // عند الاصطدام بالأرض (الوصول للأسفل)  
+        if (ball.y >= 280) {  
+          ball.completed = true;  
+          ball.y = 280;  
+          ball.x = ball.finalX;  
+          
+          // ارتداد خفيف  
+          ball.velocity = -ball.velocity * ball.bounce;  
+          
+          // توقف الحركة بعد عدة ارتدادات  
+          setTimeout(() => {  
+            this.handleBallCompletion(ball);  
+          }, 500);  
+          return;  
         }  
         
         // تحديث موقع الكرة في المصفوفة  
@@ -367,41 +403,46 @@ export default {
           this.activeBalls[ballIndex].y = ball.y;  
         }  
         
-        // عند الوصول للنهاية  
-        if (progress >= 1) {  
-          clearInterval(interval);  
-          
-          // التأكد من أن الكرة في الموضع النهائي الصحيح  
-          ball.x = ball.finalX;  
-          ball.y = finalY;  
-          ball.completed = true;  
-          
-          // تحديث الموقع النهائي  
-          if (ballIndex !== -1) {  
-            this.activeBalls[ballIndex].x = ball.finalX;  
-            this.activeBalls[ballIndex].y = finalY;  
-            this.activeBalls[ballIndex].completed = true;  
-          }  
-          
-          // حساب الربح  
-          const win = ball.bet * ball.multiplier;    
-          this.balance += win;    
+        // الاستمرار في الحركة  
+        if (elapsedTime < maxFallTime) {  
+          requestAnimationFrame(animate);  
+        } else {  
+          this.handleBallCompletion(ball);  
+        }  
+      };  
+      
+      // بدء الحركة  
+      requestAnimationFrame(animate);  
+    },  
+    
+    async handleBallCompletion(ball) {  
+      ball.completed = true;  
+      
+      // التأكد من أن الكرة في الموضع النهائي الصحيح  
+      const ballIndex = this.activeBalls.findIndex(b => b.id === ball.id);  
+      if (ballIndex !== -1) {  
+        this.activeBalls[ballIndex].x = ball.finalX;  
+        this.activeBalls[ballIndex].y = 280;  
+        this.activeBalls[ballIndex].completed = true;  
+      }  
+      
+      // حساب الربح  
+      const win = ball.bet * ball.multiplier;    
+      this.balance += win;    
   
-          setTimeout(async () => {  
-            await updateDoc(doc(db, "users", auth.currentUser.uid), {    
-              balance: this.balance,    
-            });    
+      setTimeout(async () => {  
+        await updateDoc(doc(db, "users", auth.currentUser.uid), {    
+          balance: this.balance,    
+        });    
   
-            this.result = `🎯 ربحت ${win.toFixed(2)} USDT (x${ball.multiplier})`;  
-            console.log(`✅ الكرة ${ball.id} وصلت إلى: x${ball.multiplier}`);  
-            
-            // إزالة الكرة بعد تأخير  
-            setTimeout(() => {  
-              this.activeBalls = this.activeBalls.filter(b => b.id !== ball.id);  
-            }, 1500); // انتظار ثانية ونصف قبل إزالة الكرة  
-          }, 300);  
-        }    
-      }, 80); // سرعة معتدلة  
+        this.result = `🎯 ربحت ${win.toFixed(2)} USDT (x${ball.multiplier})`;  
+        console.log(`✅ الكرة ${ball.id} وصلت إلى: x${ball.multiplier}`);  
+        
+        // إزالة الكرة بعد تأخير  
+        setTimeout(() => {  
+          this.activeBalls = this.activeBalls.filter(b => b.id !== ball.id);  
+        }, 2000);  
+      }, 500);  
     },  
     
     // دالة لتسهيل الحركة  
@@ -587,13 +628,13 @@ export default {
     
 .plinko-board {    
   position: relative;    
-  height: 320px; /* زيادة الارتفاع */    
+  height: 340px; /* زيادة الارتفاع لرؤية الكرة المعلقة */    
 }    
     
 .row {    
   display: flex;    
   justify-content: center;    
-  margin: 8px 0; /* تقليل المسافة قليلاً */    
+  margin: 8px 0;    
 }    
     
 .dot {    
@@ -606,25 +647,29 @@ export default {
     
 .ball {    
   position: absolute;    
-  width: 14px;    
-  height: 14px;    
+  width: 18px; /* تكبير الكرة قليلاً */    
+  height: 18px;    
   background: #ff2d55;    
   border-radius: 50%;    
   top: 0;    
   left: 50%;    
-  transform: translateX(-50%);    
+  transform: translate(-50%, 0);    
   z-index: 10;    
-  transition: left 0.15s ease-out, top 0.15s ease-out; /* حركة أبطأ */    
-  box-shadow: 0 2px 4px rgba(0,0,0,0.3); /* إضافة ظل للكرة */    
+  transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55); /* حركة واقعية */    
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3); /* ظل أكبر */    
 }    
+    
+.ball:hover {  
+  transform: translate(-50%, 0) scale(1.3);  
+}  
     
 .multipliers-row {    
   display: flex;    
   justify-content: center;    
   align-items: center;    
-  margin-top: 10px; /* زيادة المسافة */    
+  margin-top: 15px; /* زيادة المسافة */    
   padding-top: 0;    
-  gap: 2px; /* زيادة المسافة بين المضاعفات */    
+  gap: 2px;    
 }    
     
 .multiplier-item {    
@@ -731,18 +776,31 @@ export default {
   font-weight: bold;    
   font-size: 14px;    
   cursor: pointer;    
-  transition: all 0.2s;    
+  transition: all 0.3s;    
   min-width: 100px;    
+  position: relative;    
+  overflow: hidden;    
 }    
     
 .start-button:hover {    
   background: linear-gradient(135deg, #16a34a, #15803d);    
   transform: scale(1.05);    
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);    
+}    
+    
+.start-button:active {    
+  transform: scale(0.98);    
 }    
     
 .result {    
   margin-top: 15px;    
   font-size: 18px;    
   font-weight: bold;    
+  animation: fadeIn 0.5s ease-in-out;    
+}    
+    
+@keyframes fadeIn {    
+  from { opacity: 0; transform: translateY(10px); }    
+  to { opacity: 1; transform: translateY(0); }    
 }    
 </style>
