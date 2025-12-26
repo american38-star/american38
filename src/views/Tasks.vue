@@ -91,7 +91,7 @@
     
         <!-- المضاعفات تحت آخر صف نقاط مباشرة -->    
         <div class="multipliers-row">    
-          <div class="multiplier-item" style="min-width: 25px;">x29</div>    
+          <div class="multiplier-item">x29</div>    
           <div class="multiplier-item">x4</div>    
           <div class="multiplier-item">x1.5</div>    
           <div class="multiplier-item">x0.3</div>    
@@ -99,7 +99,7 @@
           <div class="multiplier-item">x0.3</div>    
           <div class="multiplier-item">x1.5</div>    
           <div class="multiplier-item">x4</div>    
-          <div class="multiplier-item" style="min-width: 25px;">x29</div>    
+          <div class="multiplier-item">x29</div>    
         </div>    
     
         <!-- عرض جميع الكرات النشطة -->
@@ -336,7 +336,7 @@ export default {
       const totalSteps = 40;  
       const startX = 150;  
       const startY = 0;  
-      const finalY = 280;  
+      const finalY = 260; // رفع النهاية قليلاً  
       const finalX = ball.finalX;
       
       // حفظ الـ interval
@@ -362,7 +362,7 @@ export default {
         }  
         
         // تأمين الكرة ضمن الحدود  
-        ball.x = Math.max(30, Math.min(370, ball.x));  
+        ball.x = Math.max(25, Math.min(375, ball.x));  
         
         // عند الوصول  
         if (progress >= 1) {  
@@ -416,8 +416,8 @@ export default {
     
     // الحصول على موضع المضاعف بدقة  
     getMultiplierPosition(index) {    
-      // المواقع المحددة بناءً على العرض 420px  
-      const positions = [30, 75, 120, 165, 210, 255, 300, 345, 390];    
+      // المواقع المحددة بناءً على العرض 420px - أقرب من بعض  
+      const positions = [35, 78, 121, 164, 207, 250, 293, 336, 379];    
       return positions[index];    
     },    
     
@@ -574,27 +574,27 @@ export default {
     
 .plinko-board {    
   position: relative;    
-  height: 320px;    
+  height: 300px; /* تقليل الارتفاع */    
 }    
     
 .row {    
   display: flex;    
   justify-content: center;    
-  margin: 10px 0;    
+  margin: 8px 0; /* تقليل المسافة بين الصفوف */    
 }    
     
 .dot {    
-  width: 9px;    
-  height: 9px;    
+  width: 8px; /* تصغير النقاط */    
+  height: 8px;    
   background: white;    
   border-radius: 50%;    
-  margin: 9px 10px;    
+  margin: 8px 8px; /* تقليل المسافة بين النقاط */    
 }    
     
 .ball {    
   position: absolute;    
-  width: 14px;    
-  height: 14px;    
+  width: 12px; /* تصغير الكرات قليلاً */    
+  height: 12px;    
   background: #ff2d55;    
   border-radius: 50%;    
   top: 0;    
@@ -606,25 +606,28 @@ export default {
     
 .multipliers-row {    
   display: flex;    
-  justify-content: center;    
+  justify-content: space-between; /* توزيع متساوٍ */    
   align-items: center;    
-  margin-top: 10px;    
-  padding-top: 0;    
-  gap: 5px;    
+  margin-top: 5px; /* رفع المضاعفات للأعلى */    
+  margin-bottom: 10px;    
+  padding: 0 5px; /* تقليل الهوامش */    
+  width: 100%;    
 }    
     
 .multiplier-item {    
-  padding: 1px 3px;    
-  border-radius: 2px;    
+  padding: 2px 4px; /* تقليل الحشو */    
+  border-radius: 3px;    
   font-weight: bold;    
-  font-size: 9px;    
-  min-width: 24px;    
+  font-size: 10px; /* تصغير الخط قليلاً */    
+  min-width: 28px; /* تقليل العرض */    
   text-align: center;    
   line-height: 1;    
-  height: 15px;    
+  height: 18px; /* تقليل الارتفاع */    
   display: flex;    
   align-items: center;    
   justify-content: center;    
+  margin: 0 1px; /* تقليل المسافة بين العناصر */    
+  flex: 1; /* جعل العناصر تتوسع بالتساوي */    
 }    
     
 .multipliers-row .multiplier-item:nth-child(1),    
